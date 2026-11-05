@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="_base.css">
+<style>
+  .head{display:flex;align-items:flex-end;justify-content:space-between;border-bottom:3px solid var(--ink);padding-bottom:14px;margin-top:24px}
+  .head h2{font-size:44px;font-weight:700;line-height:1.25}
+  .head .en{font-family:"JBM",monospace;font-size:13px;letter-spacing:.22em;text-transform:uppercase;color:var(--faint);margin-top:8px;direction:ltr;text-align:right}
+  .head .stamp{font-family:"JBM",monospace;font-size:12px;letter-spacing:.16em;text-transform:uppercase;border:1.5px solid var(--ink);padding:7px 11px;background:var(--paper2);box-shadow:4px 4px 0 var(--sh)}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:22px}
+  .f{padding:16px 17px 15px;display:flex;flex-direction:column;gap:8px;min-height:150px}
+  .f .n{position:absolute;top:12px;left:14px;font-family:"JBM",monospace;font-size:11px;letter-spacing:.14em;color:var(--faint)}
+  .f .ic{width:21px;height:21px;stroke-width:1.5}
+  .f h3{font-size:17.5px;font-weight:700;line-height:1.45;margin-top:2px}
+  .f p{font-size:13.5px;line-height:1.8;color:var(--ink2)}
+  .f .tagline{margin-top:auto;font-family:"JBM",monospace;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);direction:ltr;text-align:right}
+  .foot{display:flex;align-items:center;justify-content:space-between;border-top:1.5px solid var(--ink);margin-top:24px;padding-top:13px;font-family:"JBM",monospace;font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+  .foot .free{color:var(--ink);font-family:"Vazir",sans-serif;font-size:14px;font-weight:700;letter-spacing:0;text-transform:none}
+</style>
+</head>
+<body>
+<div class="sheet light">
+  <div class="grain"></div>
+  <div class="pad">
+    <div class="topline">
+      <span class="mono">NIGHTLINE / RAILWAY</span>
+      <span class="bar"></span>
+      <span class="mono">WHAT IS INSIDE THE PANEL</span>
+      <span class="bar"></span>
+      <span class="mono">12 / 12</span>
+    </div>
+
+    <div class="head">
+      <div>
+        <h2>داخل این پنل چه چیزهایی هست؟</h2>
+        <div class="en">EVERYTHING IN ONE CONTAINER — NO EXTRA SERVICE, NO EXTRA PORT</div>
+      </div>
+      <div class="stamp">EDITION 3.0.0</div>
+    </div>
+
+    <div class="grid">
+      <div class="card f">
+        <span class="n">01</span>
+        <svg class="ic"><use href="#i-layers"/></svg>
+        <h3>دو هسته، یک پنل</h3>
+        <p>Xray و sing-box کنار هم اجرا می‌شوند؛ هر پروتکل روی هستهٔ مناسب خودش، با یک فهرست مشترک از ورودی‌ها.</p>
+        <div class="tagline">XRAY + SING-BOX</div>
+      </div>
+      <div class="card f">
+        <span class="n">02</span>
+        <svg class="ic"><use href="#i-globe"/></svg>
+        <h3>۲۴ پروتکل آماده</h3>
+        <p>VLESS، REALITY، Trojan، Shadowsocks-2022، VMess، AnyTLS، Hysteria2، TUIC، WireGuard، SOCKS و HTTP — همه با پیش‌فرض‌های امن.</p>
+        <div class="tagline">24 PRESETS</div>
+      </div>
+      <div class="card f">
+        <span class="n">03</span>
+        <svg class="ic"><use href="#i-plug"/></svg>
+        <h3>تک‌پورت TCP با mux</h3>
+        <p>تمام پروتکل‌ها روی یک پورت عمومی Railway سوار می‌شوند: مسیریابی با SNI/TLS، و SOCKS5 و HTTP CONNECT بدون TLS.</p>
+        <div class="tagline">ONE PUBLIC PORT</div>
+      </div>
+
+      <div class="card f">
+        <span class="n">04</span>
+        <svg class="ic"><use href="#i-bars"/></svg>
+        <h3>پنل دوزبانهٔ روزنامه‌ای</h3>
+        <p>فارسی و راست‌به‌چپ به‌صورت پیش‌فرض، انگلیسی با یک کلیک؛ تم روشن و تاریک با تایپوگرافی چاپی.</p>
+        <div class="tagline">FA / EN · LIGHT / DARK</div>
+      </div>
+      <div class="card f">
+        <span class="n">05</span>
+        <svg class="ic"><use href="#i-qr"/></svg>
+        <h3>اشتراک در ۵ فرمت</h3>
+        <p>لینک خام، Base64، کانفیگ Xray، کانفیگ sing-box و Clash؛ همراه QR و دکمهٔ کپی برای هر لینک.</p>
+        <div class="tagline">LINK · B64 · XRAY · SB · CLASH</div>
+      </div>
+      <div class="card f">
+        <span class="n">06</span>
+        <svg class="ic"><use href="#i-users"/></svg>
+        <h3>صفحهٔ اشتراک کاربر</h3>
+        <p>هر کاربر یک صفحهٔ اختصاصی دارد: مصرف، سهمیه، تاریخ انقضا، لینک‌های آماده و QR — بدون دسترسی به پنل.</p>
+        <div class="tagline">/U/&lt;TOKEN&gt;</div>
+      </div>
+
+      <div class="card f">
+        <span class="n">07</span>
+        <svg class="ic"><use href="#i-gauge"/></svg>
+        <h3>کاربر، حجم و انقضا</h3>
+        <p>ساخت و ویرایش کاربر با سهمیهٔ حجمی و تاریخ انقضا؛ غیرفعال‌سازی خودکار پس از اتمام سهمیه.</p>
+        <div class="tagline">QUOTA &amp; EXPIRY</div>
+      </div>
+      <div class="card f">
+        <span class="n">08</span>
+        <svg class="ic"><use href="#i-telegram"/></svg>
+        <h3>پروکسی تلگرام</h3>
+        <p>MTProto با mtg و FakeTLS، به‌همراه SOCKS5 و HTTP پروکسی؛ لینک‌های tg:// و t.me آمادهٔ ارسال.</p>
+        <div class="tagline">MTPROTO · SOCKS5 · HTTP</div>
+      </div>
+      <div class="card f">
+        <span class="n">09</span>
+        <svg class="ic"><use href="#i-chart"/></svg>
+        <h3>آمار مصرف هر کاربر</h3>
+        <p>خواندن آمار از Xray API و Clash API؛ نمودار ترافیک، مصرف ماهانه و اعلان نزدیک‌شدن به سهمیه.</p>
+        <div class="tagline">PER-USER TRAFFIC</div>
+      </div>
+
+      <div class="card f">
+        <span class="n">10</span>
+        <svg class="ic"><use href="#i-railway"/></svg>
+        <h3>آمادهٔ Railway</h3>
+        <p>Dockerfile، healthcheck، والیوم برای دادهٔ پایدار و راهنمای افزودن یک TCP proxy — بدون تغییر کد.</p>
+        <div class="tagline">DOCKERFILE · HEALTHCHECK</div>
+      </div>
+      <div class="card f">
+        <span class="n">11</span>
+        <svg class="ic"><use href="#i-check"/></svg>
+        <h3>پیش‌بررسی و خودآزمایی</h3>
+        <p>دستور <span class="mono">npm run check</span> هر دو کانفیگ را می‌سازد و با ابزار رسمی هسته‌ها اعتبارسنجی می‌کند.</p>
+        <div class="tagline">PREFLIGHT BUILT IN</div>
+      </div>
+      <div class="card f">
+        <span class="n">12</span>
+        <svg class="ic"><use href="#i-shield"/></svg>
+        <h3>رایگان و غیرقابل فروش</h3>
+        <p>متن «رایگان» در همهٔ صفحه‌ها حک شده است: پنل، لینک‌ها، صفحهٔ کاربر و هدر اشتراک‌ها. فروش آن ممنوع است.</p>
+        <div class="tagline">FREE &amp; NOT FOR SALE</div>
+      </div>
+    </div>
+
+    <div class="foot">
+      <span>NIGHTLINE · RAILWAY · EDITION 3.0.0</span>
+      <span class="free">این پنل رایگان است — فروش آن ممنوع</span>
+      <span>GITHUB · README</span>
+    </div>
+  </div>
+</div>
+<script>
+  fetch('/sprite.svg').then((r) => r.text()).then((t) => document.body.insertAdjacentHTML('beforeend', t));
+</script>
+</body>
+</html>

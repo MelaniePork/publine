@@ -1,0 +1,18 @@
+// Subscriber page screenshot with links + QR redacted.
+import { chromium } from '/tmp/node_modules/playwright-core/index.mjs';
+import { readFileSync } from 'node:fs';
+const token = readFileSync('/tmp/token.txt', 'utf8').trim();
+const exe = process.env.HOME + '/.cache/ms-playwright/chromium-1187/chrome-linux/chrome';
+const b = await chromium.launch({ executablePath: exe, args: ['--no-sandbox'] });
+const c = await b.newContext({ viewport: { width: 1100, height: 1500 }, deviceScaleFactor: 1.6 });
+const p = await c.newPage();
+await p.goto(`http://127.0.0.1:8080/u/${token}`, { waitUntil: 'networkidle' });
+await p.waitForTimeout(900);
+await p.addStyleTag({ content: '.redact{filter:blur(6px)!important;user-select:none}' });
+await p.evaluate(() => {
+  document.querySelectorAll('.qrbox, .lk-uri, .acct-name, .ep-val, .lk-cap').forEach((el) => el.classList.add('redact'));
+});
+await p.waitForTimeout(200);
+await p.screenshot({ path: '/home/user/nightline-railway/assets/screens/portal.png', fullPage: true });
+console.log('portal shot ok');
+await b.close();
