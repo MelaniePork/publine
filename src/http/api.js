@@ -7,6 +7,7 @@
  */
 import net from 'node:net';
 import { analyse, applyProfile } from '../iran.js';
+import { scanner, DEFAULTS as RAILYNX_DEFAULTS, parseVlessLink } from '../railynx.js';
 import { readFileSync } from 'node:fs';
 import { APP, RAILWAY, IS_RAILWAY, DATA_DIR, PORT, MUX_PORT, BIN, NODE_ENV, LIMITS } from '../env.js';
 import {
@@ -616,6 +617,42 @@ export async function handleApi(ctx) {
       await runtime.apply({ reason: `restart-${which}` });
     }
     return send(res, 200, { ok: true, state: buildState(runtime, req) });
+  }
+
+  /* ── railynx · clean-ip scanner ────────────────────────────────────── */
+  if (route === 'GET /api/railynx') {
+    return send(res, 200, { ...scanner.snapshot(), defaults: RAILYNX_DEFAULTS });
+  }
+
+  if (route === 'POST /api/railynx/scan') {
+    const body = await readBody(req);
+    let link = String(body.link || '').trim();
+    if (!link && body.linkId) {
+      const owner = (doc.users || []).find((u) => (u.links || []).some((l) => l.id === body.linkId));
+      const found = owner && owner.links.find((l) => l.id === body.linkId);
+      if (found) link = found.uri;
+    }
+    try {
+      parseVlessLink(link);
+    } catch (err) {
+      return send(res, 400, { error: err.message });
+    }
+    if (scanner.snapshot().running) return send(res, 409, { error: 'a scan is already running' });
+    const cidr = String(body.cidr || RAILYNX_DEFAULTS.cidr).trim();
+    const concurrency = Number(body.concurrency || RAILYNX_DEFAULTS.concurrency);
+    event('railynx', `scan started on ${cidr}`);
+    scanner.start({ link, cidr, concurrency }).catch((err) => {
+      event('railynx-error', err.message);
+    });
+    // Give the first probe a beat so the UI paints a real progress number.
+    await new Promise((r) => setTimeout(r, 120));
+    return send(res, 200, { ok: true, ...scanner.snapshot() });
+  }
+
+  if (route === 'POST /api/railynx/cancel') {
+    const result = scanner.cancel();
+    if (result.ok) event('railynx', 'scan cancelled');
+    return send(res, result.ok ? 200 : 400, { ...result, ...scanner.snapshot() });
   }
 
   if (route === 'GET /api/raw') {

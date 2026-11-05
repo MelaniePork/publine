@@ -175,6 +175,7 @@ function renderStatusBar() {
 const TABS = [
   { id: 'dashboard', icon: 'gauge', fa: 'داشبورد', en: 'DASHBOARD' },
   { id: 'easy', icon: 'bolt', fa: 'تنظیم آسان', en: 'EASY SETUP' },
+  { id: 'railynx', icon: 'radar', fa: 'Railynx', en: 'RAILYNX' },
   { id: 'inbounds', icon: 'layers', fa: 'پروتکل‌ها', en: 'PROTOCOLS' },
   { id: 'users', icon: 'users', fa: 'کاربران', en: 'USERS' },
   { id: 'delivery', icon: 'send', fa: 'تحویل و ساب', en: 'DELIVERY' },
@@ -218,6 +219,11 @@ function renderEasy() {
   }
   const a = data.analysis;
   const st = S.state;
+  // `data.users` is optional: an apply response carries the analysis only.
+  const users = Array.isArray(data.users) ? data.users : (st.users || []).map((u) => ({
+    id: u.id, name: u.name, status: u.status, links: (u.links || []).length,
+    subUrl: u.subUrl, portalUrl: u.portalUrl,
+  }));
   const okCount = a.checks.filter((c) => c.ok).length;
   const verdict = okCount === a.checks.length
     ? t('همه‌چیز آماده است؛ فقط لینک را بردار.', 'All set — just take the link.')
@@ -247,7 +253,7 @@ function renderEasy() {
             </div>
             <p class="muted">${t(p.taglineFa, p.taglineEn)}</p>
             <ul class="ticks">
-              ${(t(p.notesFa.join('|'), p.notesEn.join('|')).split('|')).filter(Boolean).map((n) => `<li>${esc(n)}</li>`).join('')}
+              ${(p.notesFa || []).map((n, i) => `<li>${t(esc(n), esc((p.notesEn || [])[i] || ''))}</li>`).join('')}
             </ul>
             <button class="btn sm-btn primary" data-act="easy-apply" data-arg="${p.id}" type="button">
               ${icon('check', 'ic ic-sm')}${t('اعمال و ساخت لینک', 'APPLY & BUILD LINK')}
@@ -260,7 +266,7 @@ function renderEasy() {
       <p class="kicker">${icon('gauge')}${t('تحلیل شبکه', 'NETWORK ANALYSIS')}</p>
       <div class="stack-sm">
         ${a.checks.map((c) => `<div class="check ${c.ok ? 'ok' : 'warn'}">
-          <span class="dot"></span><span>${esc(t(c.fa, c.en))}</span></div>`).join('')}
+          <span class="dot"></span><span>${t(esc(c.fa), esc(c.en))}</span></div>`).join('')}
       </div>
       <div class="dashed"></div>
       <table class="tbl">
@@ -282,7 +288,7 @@ function renderEasy() {
   <div class="cols">
     <div class="card">
       <p class="kicker">${icon('send')}${t('لینک اشتراک کاربران', 'USER SUBSCRIPTION LINKS')}</p>
-      ${data.users.length ? data.users.map((u) => `
+      ${users.length ? users.map((u) => `
         <div class="row-line">
           <div>
             <strong>${esc(u.name)}</strong>
@@ -304,10 +310,140 @@ function renderEasy() {
     <div class="card">
       <p class="kicker">${icon('shield')}${t('نکات ضد فیلتر (ایران)', 'ANTI-FILTER NOTES (IRAN)')}</p>
       <ol class="tips">
-        ${a.tips.map((tip) => `<li>${esc(t(tip.fa, tip.en))}</li>`).join('')}
+        ${a.tips.map((tip) => `<li>${t(esc(tip.fa), esc(tip.en))}</li>`).join('')}
       </ol>
       <p class="hint">${t('این‌ها توصیهٔ عمومی‌اند، نه تضمین؛ شرایط اپراتورها متفاوت است.', 'General guidance, not a guarantee — ISPs differ.')}</p>
     </div>
+  </div>`;
+}
+
+/* ── railynx · clean ip scanner ──────────────────────────────────────── */
+
+const RAILYNX = { data: null, timer: null, link: '' };
+
+async function railynxPoll() {
+  try {
+    RAILYNX.data = await api('/api/railynx');
+    renderRailynx();
+    if (!RAILYNX.data.running) stopRailynxPolling();
+  } catch {
+    stopRailynxPolling();
+  }
+}
+
+function startRailynxPolling() {
+  if (RAILYNX.timer) return;
+  RAILYNX.timer = setInterval(railynxPoll, 1200);
+}
+
+function stopRailynxPolling() {
+  if (RAILYNX.timer) clearInterval(RAILYNX.timer);
+  RAILYNX.timer = null;
+}
+
+function railynxVlessChoices() {
+  const out = [];
+  for (const user of (S.state.users || [])) {
+    for (const link of (user.links || [])) {
+      if (link.protocol === 'vless' && (link.transport === 'ws')) {
+        out.push({ label: `${user.name} · ${link.label.split('·').slice(-1)[0].trim()}`, uri: link.uri });
+      }
+    }
+  }
+  return out;
+}
+
+function renderRailynx() {
+  const pane = $('#pane-railynx');
+  if (!pane) return;
+  const d = RAILYNX.data || { running: false, total: 0, checked: 0, alive: 0, failed: 0, results: [], recent: [], cidr: '', concurrency: 12 };
+  const choices = railynxVlessChoices();
+  const pct = d.total ? Math.round((d.checked / d.total) * 100) : 0;
+  const elapsed = d.startedAt ? Math.max(0, ((d.finishedAt || Date.now()) - d.startedAt) / 1000) : 0;
+  const defaults = d.defaults || { cidr: '69.46.46.0/24', concurrency: 12 };
+
+  pane.innerHTML = `
+  <div class="cols">
+    <div class="card">
+      <p class="kicker">${icon('radar')}${t('Railynx · اسکنر آی‌پی تمیز ریلوی', 'RAILYNX · RAILWAY CLEAN-IP SCANNER')}</p>
+      <p class="lede">${t(
+        'یک لینک VLESS می‌گیرد، رنج آی‌پی را می‌گردد و فقط آی‌پی‌هایی را نگه می‌دارد که سه بار پشت سر هم هندشیک کامل TLS + WebSocket + VLESS را با پاسخ ۲۰۴ رد کنند. فقط آدرس عوض می‌شود؛ بقیهٔ لینک دست‌نخورده می‌ماند.',
+        'Takes a VLESS link, sweeps a CIDR block, and keeps only addresses that pass a full TLS + WebSocket + VLESS round trip three times in a row. Only the address changes; the rest of the link stays as it is.',
+      )}</p>
+
+      <label class="fld-label">${t('لینک VLESS (نوع WS)', 'VLESS LINK (WS)')}</label>
+      ${choices.length ? `<select id="rl-pick" class="rl-select">
+          <option value="">${t('— انتخاب از لینک‌های کاربران —', '— pick one of the user links —')}</option>
+          ${choices.map((c) => `<option value="${esc(c.uri)}">${esc(c.label)}</option>`).join('')}
+        </select>` : ''}
+      <textarea id="rl-link" class="raw-box rl-link" spellcheck="false" dir="ltr" placeholder="vless://uuid@host:443?security=tls&type=ws&host=...&path=/...">${esc(RAILYNX.link)}</textarea>
+
+      <div class="field-grid">
+        <div>
+          <label class="fld-label">${t('رنج اسکن (CIDR)', 'SCAN RANGE (CIDR)')}</label>
+          <input type="text" id="rl-cidr" dir="ltr" value="${esc(d.cidr || defaults.cidr)}" placeholder="${esc(defaults.cidr)}">
+        </div>
+        <div>
+          <label class="fld-label">${t('ورکر موازی', 'PARALLEL WORKERS')}</label>
+          <input type="number" id="rl-workers" min="1" max="32" value="${esc(d.concurrency || defaults.concurrency)}">
+        </div>
+      </div>
+      <p class="hint">${t('هر آی‌پی ۳ پروب با فاصلهٔ ۶۰ میلی‌ثانیه می‌گیرد؛ اگر یکی بیفتد حذف می‌شود. تایم‌اوت اتصال ۲۴۰۰ میلی‌ثانیه است.', 'Each address gets 3 probes 60 ms apart; one miss drops it. Connect timeout is 2400 ms.')}</p>
+
+      <div class="actions">
+        <button class="btn primary" data-act="rl-start" type="button" ${d.running ? 'disabled' : ''}>
+          ${icon('radar', 'ic ic-sm')}${t('شروع اسکن', 'START SCAN')}</button>
+        <button class="btn ghost" data-act="rl-cancel" type="button" ${d.running ? '' : 'disabled'}>
+          ${icon('ban', 'ic ic-sm')}${t('لغو (نتایج تا اینجا می‌ماند)', 'CANCEL (keeps results)')}</button>
+      </div>
+
+      ${d.running ? `<div class="rl-progress">
+        <div class="rl-bar"><span style="width:${pct}%"></span></div>
+        <p class="muted tnum">${d.checked} / ${d.total} · ${pct}% · ${t('سالم', 'alive')}: ${d.alive} · ${t('زمان', 'elapsed')}: ${elapsed.toFixed(0)}s</p>
+      </div>` : d.checked ? `<p class="muted tnum">${t('آخرین اسکن', 'LAST SCAN')}: ${d.checked} ${t('آی‌پی', 'IPs')} · ${d.alive} ${t('سالم', 'alive')} · ${d.failed} ${t('رد', 'dropped')} · ${d.cidr}</p>` : ''}
+    </div>
+
+    <div class="card">
+      <p class="kicker">${icon('check')}${t('آی‌پی‌های تمیز', 'CLEAN ADDRESSES')}</p>
+      ${d.results.length ? `
+        <table class="tbl">
+          <thead><tr>
+            <th>${t('تأخیر', 'LATENCY')}</th><th>IP</th><th></th>
+          </tr></thead>
+          <tbody>
+            ${d.results.map((r) => `<tr>
+              <td class="mono tnum">${r.latency} ms</td>
+              <td class="mono" dir="ltr">${esc(r.ip)}</td>
+              <td><button class="mini" data-act="copy" data-arg="${esc(r.link)}" type="button" title="copy">${icon('copy', 'ic ic-sm')}</button></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+        <div class="actions">
+          <button class="btn sm-btn primary" data-act="copy" data-arg="${esc(d.results[0].link)}" type="button">
+            ${icon('copy', 'ic ic-sm')}${t('کپی بهترین لینک', 'COPY BEST LINK')}</button>
+          <button class="btn sm-btn ghost" data-act="copy" data-arg="${esc(d.results.map((r) => r.link).join('\n'))}" type="button">
+            ${icon('file', 'ic ic-sm')}${t('کپی همه', 'COPY ALL')}</button>
+        </div>`
+        : `<p class="muted">${t('هنوز آی‌پی سالمی پیدا نشده. اگر همه رد شدند، دامنه/SNI لینک یا رنج را عوض کن.', 'No clean address yet. If everything is dropped, try another SNI/domain or range.')}</p>`}
+      <div class="dashed"></div>
+      <p class="kicker">${icon('trace-dash')}${t('آخرین پروب‌ها', 'LATEST PROBES')}</p>
+      <div class="rl-recent">
+        ${(d.recent || []).slice(0, 12).map((r) => `<span class="chip ${r.ok ? 'ok' : ''}" dir="ltr">${esc(r.ip)}${r.ok ? ` · ${r.latency}ms` : ` · ${esc(r.reason || 'fail')}`}</span>`).join('')
+          || `<span class="muted">${t('—', '—')}</span>`}
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <p class="kicker">${icon('info')}${t('چطور کار می‌کند', 'HOW IT WORKS')}</p>
+    <ol class="tips">
+      <li>${t('اتصال TCP به آی‌پی کاندید روی پورت لینک (پیش‌فرض ۴۴۳)، تایم‌اوت ۲۴۰۰ میلی‌ثانیه.', 'TCP connect to the candidate IP on the link port (443 by default), 2400 ms timeout.')}</li>
+      <li>${t('هندشیک TLS با SNI برابر دامنهٔ لینک (نه خود آی‌پی)، ALPN روی http/1.1 و پذیرش همهٔ گواهی‌ها.', 'TLS handshake with SNI = the link domain (not the IP), ALPN http/1.1, certificates accepted.')}</li>
+      <li>${t('آپگرید WebSocket روی مسیر لینک با Host برابر دامنه؛ پاسخ باید ۱۰۱ باشد.', 'WebSocket upgrade on the link path with the domain as Host; the answer must be 101.')}</li>
+      <li>${t('هدر باینری VLESS (نسخه ۰، UUID، کامند ۱، پورت ۸۰، دامنه www.google.com) داخل فریم ماسک‌شده، سپس درخواست GET /generate_204.', 'A binary VLESS header (version 0, UUID, cmd 1, port 80, www.google.com) inside a masked frame, then GET /generate_204.')}</li>
+      <li>${t('موفقیت فقط با دیدن «HTTP/1.1 204» یا «204 No Content»؛ تأخیر = میانگین سه پروب.', 'Success only on “HTTP/1.1 204” / “204 No Content”; latency = mean of three probes.')}</li>
+    </ol>
+    <p class="hint">${t('این اسکن سمت سرور اجرا می‌شود (سوکت خام TLS با SNI سفارشی) — مرورگر چنین دسترسی‌ای ندارد.', 'The scan runs server-side (raw TLS socket with a custom SNI) — a browser cannot do this.')}</p>
   </div>`;
 }
 
@@ -331,6 +467,8 @@ function switchTab(id) {
   $$('.tab-pane').forEach((pane) => { pane.hidden = pane.dataset.pane !== id; });
   renderNav();
   if (id === 'easy') { loadEasy().then(() => { if (S.tab === 'easy') renderEasy(); }).catch(() => {}); }
+  if (id === 'railynx') { railynxPoll(); }
+  if (id !== 'railynx') stopRailynxPolling();
   if (id === 'cores') startLogPolling(); else stopLogPolling();
   if (id === 'dashboard' || id === 'cores') refreshLogs();
 }
@@ -1280,6 +1418,38 @@ async function onAction(act, arg, el) {
         method: 'POST',
         body: { http: { enabled: true, user: $('#tg-http-user')?.value || 'nl', pass: $('#tg-http-pass')?.value || '' } },
       }));
+    case 'rl-start': {
+      const link = ($('#rl-link')?.value || RAILYNX.link || '').trim();
+      if (!link) return toast(t('اول یک لینک VLESS بده.', 'Paste a VLESS link first.'), 'warn');
+      RAILYNX.link = link;
+      busy(true);
+      try {
+        RAILYNX.data = await api('/api/railynx/scan', {
+          method: 'POST',
+          body: { link, cidr: $('#rl-cidr')?.value || '', concurrency: Number($('#rl-workers')?.value || 12) },
+        });
+        startRailynxPolling();
+        renderRailynx();
+        toast(t('اسکن شروع شد.', 'Scan started.'));
+      } catch (err) {
+        toast(err.message, 'warn');
+      } finally {
+        busy(false);
+      }
+      return;
+    }
+    case 'rl-cancel':
+      busy(true);
+      try {
+        RAILYNX.data = await api('/api/railynx/cancel', { method: 'POST' });
+        renderRailynx();
+        toast(t('اسکن لغو شد؛ نتایج تا این لحظه ماند.', 'Scan cancelled — results so far are kept.'));
+      } catch (err) {
+        toast(err.message, 'warn');
+      } finally {
+        busy(false);
+      }
+      return;
     case 'modal-close':
       closeModal();
       return;
@@ -1348,9 +1518,9 @@ async function onAction(act, arg, el) {
       busy(true);
       try {
         const res = await api('/api/easy-setup/apply', { method: 'POST', body: { profile: arg } });
-        EASY_CACHE.data = res;
-        EASY_CACHE.at = Date.now();
         S.state = await api('/api/state');
+        EASY_CACHE.data = await api('/api/easy-setup');
+        EASY_CACHE.at = Date.now();
         renderAll();
         S.tab = 'easy';
         switchTab('easy');
@@ -1432,6 +1602,14 @@ document.addEventListener('click', (ev) => {
 });
 
 document.addEventListener('change', (ev) => {
+  if (ev.target.id === 'rl-pick') {
+    const box = $('#rl-link');
+    if (box && ev.target.value) {
+      box.value = ev.target.value;
+      RAILYNX.link = ev.target.value;
+    }
+    return;
+  }
   const el = ev.target.closest('[data-act]');
   if (!el) return;
   if (['toggle-inbound', 'toggle-mtproto', 'toggle-socks', 'toggle-http'].includes(el.dataset.act)) {
@@ -1489,6 +1667,7 @@ function renderAll() {
   renderNav();
   renderDashboard();
   renderEasy();
+  renderRailynx();
   renderInbounds();
   renderUsers();
   renderDelivery();

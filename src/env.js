@@ -14,7 +14,7 @@ export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 export const APP = {
   brand: 'NIGHTLINE',
   tag: 'Railway',
-  version: '3.1.0',
+  version: '1.0.0',
   edition: 'RAILWAY',
   repo: 'https://github.com/youdidking/NightLine',
   telegram: process.env.NL_TELEGRAM_CONTACT || 'https://t.me/rvivl',

@@ -1,6 +1,6 @@
 {
   "name": "nightline-railway",
-  "version": "3.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "NIGHTLINE · Railway Edition — multi-core (Xray / sing-box) panel with native Telegram proxy suite for Railway free plan",
@@ -10,8 +10,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "check": "node scripts/preflight.js",
-    "selftest": "node scripts/selftest.js"
+    "check": "node scripts/preflight.js"
   },
   "dependencies": {
     "ws": "^8.18.0"

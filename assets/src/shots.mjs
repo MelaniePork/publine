@@ -1,8 +1,8 @@
 // Renders README screenshots from the running panel with every secret redacted.
-import { chromium } from '/tmp/node_modules/playwright-core/index.mjs';
+import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
 
-const exe = process.env.HOME + '/.cache/ms-playwright/chromium-1187/chrome-linux/chrome';
+const exe = process.env.CHROME_BIN || (process.env.HOME + '/.cache/ms-playwright/chromium-1187/chrome-linux/chrome');
 const OUT = '/home/user/nightline-railway/assets/screens';
 mkdirSync(OUT, { recursive: true });
 
@@ -28,13 +28,17 @@ const REDACT_JS = () => {
   // QR codes encode the same secrets
   document.querySelectorAll('.qrbox, canvas.qr, .qr svg').forEach((el) => el.classList.add('redact'));
   // mask every field value (credentials, keys, tokens)
-  document.querySelectorAll('input').forEach((el) => { if (el.type === 'text' || el.type === '') el.type = 'password'; });
+  const KEEP = new Set(['rl-cidr', 'rl-workers', 's-public', 's-tcpport', 's-loglevel']);
+  document.querySelectorAll('input').forEach((el) => {
+    if (KEEP.has(el.id)) return;
+    if (el.type === 'text' || el.type === '') el.type = 'password';
+  });
   // never leak an account name in a screenshot
   document.querySelectorAll('.user-name, .acct-name').forEach((el) => el.classList.add('redact'));
 };
 
 const browser = await chromium.launch({ executablePath: exe, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
-const ctx = await browser.newContext({ viewport: { width: 1400, height: 1120 }, deviceScaleFactor: 1.6 });
+const ctx = await browser.newContext({ viewport: { width: 1400, height: 1000 }, deviceScaleFactor: 1.6 });
 const page = await ctx.newPage();
 await page.goto('http://127.0.0.1:8080/', { waitUntil: 'networkidle' });
 await page.fill('#auth-user', 'admin');
@@ -44,6 +48,8 @@ await page.waitForTimeout(2200);
 
 const shots = [
   ['dashboard', null],
+  ['easy', 'easy'],
+  ['railynx', 'railynx'],
   ['inbounds', 'inbounds'],
   ['telegram', 'telegram'],
   ['users', 'users'],
@@ -53,7 +59,7 @@ const shots = [
 for (const [name, tab] of shots) {
   if (tab) {
     await page.click(`.tab-btn[data-arg="${tab}"]`);
-    await page.waitForTimeout(900);
+    await page.waitForTimeout(1600);
   }
   await page.evaluate(REDACT_JS);
   await page.waitForTimeout(250);

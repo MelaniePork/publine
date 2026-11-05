@@ -1,4 +1,4 @@
-import { chromium } from '/tmp/node_modules/playwright-core/index.mjs';
+import { chromium } from 'playwright';
 import { readdirSync, mkdirSync, copyFileSync, rmSync } from 'node:fs';
 
 // The panel's static root (public/) is what serves /fonts and /sprite.svg, so the
@@ -10,7 +10,7 @@ for (const f of readdirSync(SRC)) {
   if (f.endsWith('.html') || f.endsWith('.css')) copyFileSync(`${SRC}/${f}`, `${STAGE}/${f}`);
 }
 
-const exe = process.env.HOME + '/.cache/ms-playwright/chromium-1187/chrome-linux/chrome';
+const exe = process.env.CHROME_BIN || (process.env.HOME + '/.cache/ms-playwright/chromium-1187/chrome-linux/chrome');
 const base = 'http://127.0.0.1:8100/__render/';
 const only = process.argv[2];
 const files = readdirSync('/home/user/nightline-railway/assets/src')

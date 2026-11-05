@@ -1,8 +1,8 @@
 // Subscriber page screenshot with links + QR redacted.
-import { chromium } from '/tmp/node_modules/playwright-core/index.mjs';
+import { chromium } from 'playwright';
 import { readFileSync } from 'node:fs';
 const token = readFileSync('/tmp/token.txt', 'utf8').trim();
-const exe = process.env.HOME + '/.cache/ms-playwright/chromium-1187/chrome-linux/chrome';
+const exe = process.env.CHROME_BIN || (process.env.HOME + '/.cache/ms-playwright/chromium-1187/chrome-linux/chrome');
 const b = await chromium.launch({ executablePath: exe, args: ['--no-sandbox'] });
 const c = await b.newContext({ viewport: { width: 1100, height: 1500 }, deviceScaleFactor: 1.6 });
 const p = await c.newPage();
