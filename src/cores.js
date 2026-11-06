@@ -7,6 +7,7 @@
  * dead.
  */
 import fs from 'node:fs';
+import { stripAnsi, oneLine } from './text.js';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
@@ -104,7 +105,7 @@ export class Core extends EventEmitter {
     this.lastError = '';
 
     const onData = (buf) => {
-      const text = buf.toString('utf8');
+      const text = stripAnsi(buf.toString('utf8'));
       for (const line of text.split('\n')) {
         if (line.trim()) this.log(line.trim());
       }
@@ -177,7 +178,9 @@ export class Core extends EventEmitter {
   }
 
   log(line) {
-    const stamped = `${new Date().toISOString()} ${line}`;
+    const clean = stripAnsi(line);
+    if (!clean.trim()) return;
+    const stamped = `${new Date().toISOString()} ${clean}`;
     this.lines.push(stamped);
     if (this.lines.length > RING) this.lines.splice(0, this.lines.length - RING);
     try {

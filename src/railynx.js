@@ -52,11 +52,15 @@ export function parseVlessLink(raw) {
   }
   const q = url.searchParams;
   const type = (q.get('type') || 'ws').toLowerCase();
-  if (type !== 'ws') throw new Error('Railynx only scans VLESS over WebSocket (type=ws)');
   const security = (q.get('security') || 'tls').toLowerCase();
   const domain = (q.get('host') || q.get('sni') || url.hostname || '').toLowerCase();
   if (!domain) throw new Error('the link has no host/SNI');
   return {
+    // WebSocket links get the full five-step probe; every other VLESS transport
+    // (raw TCP, REALITY, gRPC, XHTTP) falls back to a TLS-latency probe so the
+    // scanner is not limited to one config type.
+    mode: type === 'ws' ? 'full' : 'ping',
+    raw: text,
     uuid,
     address: url.hostname,
     port: Number(url.port || 443) || 443,
@@ -70,8 +74,13 @@ export function parseVlessLink(raw) {
   };
 }
 
-/** Rebuild the same link with only the connection address swapped. */
+/**
+ * Rebuild the same link with only the connection address swapped — every other
+ * parameter (flow, pbk, sid, alpn, path …) stays exactly as the operator set it.
+ */
 export function buildCleanLink(parsed, ip) {
+  const swapped = parsed.raw.replace(/@(\[[^\]]+\]|[^@/?#]+?):(\d+)/, `@${ip}:${parsed.port}`);
+  if (swapped !== parsed.raw) return swapped;
   const params = new URLSearchParams({
     encryption: 'none',
     security: parsed.security || 'tls',
@@ -170,6 +179,38 @@ function wsUpgradeRequest(parsed) {
   ].join('\r\n');
 }
 
+/** Latency-only probe for non-WebSocket configs: TCP + TLS with the link SNI. */
+function probeTls({ parsed, ip }) {
+  return new Promise((resolve) => {
+    const started = process.hrtime.bigint();
+    let done = false;
+    let raw = null;
+    let sock = null;
+    const finish = (ok, extra = {}) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try { sock?.destroy(); } catch { /* ignore */ }
+      try { raw?.destroy(); } catch { /* ignore */ }
+      resolve({ ok, ip, latency: Math.round(Number(process.hrtime.bigint() - started) / 1e6), ...extra });
+    };
+    const timer = setTimeout(() => finish(false, { reason: 'timeout' }), DEFAULTS.connectTimeoutMs + 2000);
+    raw = net.connect({ host: ip, port: parsed.port });
+    raw.setNoDelay(true);
+    raw.on('error', (err) => finish(false, { reason: err.code || 'tcp' }));
+    raw.on('connect', () => {
+      sock = tls.connect({
+        socket: raw,
+        servername: parsed.sni,
+        ALPNProtocols: parsed.type === 'grpc' ? ['h2'] : ['http/1.1'],
+        rejectUnauthorized: false,
+      });
+      sock.on('error', (err) => finish(false, { reason: err.code || 'tls' }));
+      sock.on('secureConnect', () => finish(true));
+    });
+  });
+}
+
 /* ── one probe ────────────────────────────────────────────────────────── */
 
 function probe({ parsed, ip }) {
@@ -243,11 +284,11 @@ function probe({ parsed, ip }) {
   });
 }
 
-async function probeThrice(parsed, ip, rounds, gapMs, isCancelled) {
+async function probeThrice(parsed, ip, rounds, gapMs, isCancelled, probeFn = probe) {
   const latencies = [];
   for (let i = 0; i < rounds; i += 1) {
     if (isCancelled()) return { ok: false, ip, reason: 'cancelled' };
-    const res = await probe({ parsed, ip });
+    const res = await probeFn({ parsed, ip });
     if (!res.ok) return res;
     latencies.push(res.latency);
     if (i < rounds - 1) await new Promise((r) => setTimeout(r, gapMs));
@@ -297,6 +338,7 @@ export class RailynxScanner {
       concurrency: this.state.concurrency,
       lastError: this.state.lastError,
       link: this.state.parsed ? this.state.parsed.address : '',
+      mode: this.state.parsed ? this.state.parsed.mode : '',
       results: this.state.results.slice(0, 200),
       recent: this.state.recent.slice(0, 24),
     };
@@ -340,7 +382,9 @@ export class RailynxScanner {
         index += 1;
         if (at >= queue.length) return;
         const ip = queue[at];
-        const res = await probeThrice(parsed, ip, DEFAULTS.rounds, DEFAULTS.gapMs, isCancelled);
+        const res = parsed.mode === 'full'
+          ? await probeThrice(parsed, ip, DEFAULTS.rounds, DEFAULTS.gapMs, isCancelled)
+          : await probeThrice(parsed, ip, DEFAULTS.rounds, DEFAULTS.gapMs, isCancelled, probeTls);
         if (isCancelled()) return;
         this.state.checked += 1;
         this.state.recent.unshift({

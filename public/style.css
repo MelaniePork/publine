@@ -138,6 +138,7 @@ html[data-theme="dark"] .grain{mix-blend-mode:screen;opacity:.15}
   flex:0 0 auto;display:inline-block;vertical-align:-2px;
 }
 .ic-sm{width:13px;height:13px;stroke-width:2}
+.ic-brand{fill:currentColor;stroke:none}
 .ic-lg{width:18px;height:18px;stroke-width:1.8}
 .ic-spin{animation:nl-spin .9s linear infinite}
 @keyframes nl-spin{to{transform:rotate(360deg)}}

@@ -11,6 +11,7 @@
 import http from 'node:http';
 import net from 'node:net';
 import fs from 'node:fs';
+import zlib from 'node:zlib';
 import path from 'node:path';
 import { ROOT } from '../env.js';
 import { handleApi } from './api.js';
@@ -31,6 +32,27 @@ const MIME = {
   '.webmanifest': 'application/manifest+json',
 };
 
+/* Small in-process cache: the panel's assets change only on redeploy. */
+const STATIC_CACHE = new Map();
+
+function staticEntry(file) {
+  const stat = fs.statSync(file);
+  const hit = STATIC_CACHE.get(file);
+  if (hit && hit.mtime === stat.mtimeMs) return hit;
+  const raw = fs.readFileSync(file);
+  const ext = path.extname(file).toLowerCase();
+  const compressible = /^(text\/|application\/(json|javascript|xml))/.test(MIME[ext] || '');
+  const entry = {
+    mtime: stat.mtimeMs,
+    raw,
+    gzip: compressible && raw.length > 1024 ? zlib.gzipSync(raw, { level: 6 }) : null,
+    type: MIME[ext] || 'application/octet-stream',
+    ext,
+  };
+  STATIC_CACHE.set(file, entry);
+  return entry;
+}
+
 function serveStatic(req, res, urlPath) {
   const rel = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '');
   if (rel.includes('..')) {
@@ -39,13 +61,23 @@ function serveStatic(req, res, urlPath) {
   }
   const file = path.join(PUBLIC_DIR, rel);
   if (!file.startsWith(PUBLIC_DIR) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return false;
-  const ext = path.extname(file).toLowerCase();
-  const body = fs.readFileSync(file);
-  res.writeHead(200, {
-    'Content-Type': MIME[ext] || 'application/octet-stream',
+  const entry = staticEntry(file);
+  const acceptsGzip = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
+  const body = acceptsGzip && entry.gzip ? entry.gzip : entry.raw;
+  const headers = {
+    'Content-Type': entry.type,
     'Content-Length': body.length,
-    'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=600',
-  });
+    'Cache-Control': entry.ext === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable',
+    ETag: `"${entry.mtime.toString(36)}-${entry.raw.length.toString(36)}"`,
+    Vary: 'Accept-Encoding',
+  };
+  if (entry.gzip && acceptsGzip) headers['Content-Encoding'] = 'gzip';
+  if (req.headers['if-none-match'] === headers.ETag) {
+    res.writeHead(304, { ETag: headers.ETag, 'Cache-Control': headers['Cache-Control'] });
+    res.end();
+    return true;
+  }
+  res.writeHead(200, headers);
   res.end(body);
   return true;
 }

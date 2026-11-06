@@ -38,7 +38,7 @@ const REDACT_JS = () => {
 };
 
 const browser = await chromium.launch({ executablePath: exe, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
-const ctx = await browser.newContext({ viewport: { width: 1400, height: 1000 }, deviceScaleFactor: 1.6 });
+const ctx = await browser.newContext({ viewport: { width: 1400, height: 1000 }, deviceScaleFactor: 1 });
 const page = await ctx.newPage();
 await page.goto('http://127.0.0.1:8080/', { waitUntil: 'networkidle' });
 await page.fill('#auth-user', 'admin');

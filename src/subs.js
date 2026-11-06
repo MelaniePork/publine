@@ -7,21 +7,57 @@ import { buildUserLinks } from './links.js';
 import { certPin } from './config/certs.js';
 import { userTotal } from './store.js';
 
+export const REPO_URL = 'https://github.com/youdidking/NightLine-Railway';
+const REPO_URL_INLINE = REPO_URL;
+
 const SUB_HEADERS = {
-  'profile-title': 'NIGHTLINE',
+  'profile-title': 'NIGHTLINE · FREE',
   'profile-update-interval': '12',
+  'profile-web-page-url': REPO_URL_INLINE,
 };
 
 export function headerSet(brand = 'NIGHTLINE') {
-  return { ...SUB_HEADERS, 'profile-title': brand };
+  return { ...SUB_HEADERS, 'profile-title': `${brand} · FREE` };
+}
+
+export const FREE_LINE = 'FREE & NOT FOR SALE — selling this service is prohibited';
+export const FREE_LINE_FA = 'رایگان است — فروش این سرویس ممنوع';
+
+/** Days left before the account expires (null when it never expires). */
+export function daysLeft(user) {
+  if (!user.expiresAt) return null;
+  return Math.max(0, Math.ceil((user.expiresAt - Date.now()) / 86_400_000));
+}
+
+/** Human summary used by subscriptions, headers and the portal. */
+export function usageSummary(user) {
+  const used = userTotal(user);
+  const total = user.quotaBytes || 0;
+  const remaining = total ? Math.max(0, total - used) : null;
+  const gb = (bytes) => (bytes / 1024 ** 3).toFixed(2);
+  return {
+    usedGb: gb(used),
+    totalGb: total ? gb(total) : null,
+    remainingGb: remaining === null ? null : gb(remaining),
+    days: daysLeft(user),
+    expires: user.expiresAt ? new Date(user.expiresAt).toISOString().slice(0, 10) : null,
+  };
 }
 
 export function infoLine(doc, user) {
-  const used = (userTotal(user) / 1024 ** 3).toFixed(2);
-  const quota = user.quotaBytes ? (user.quotaBytes / 1024 ** 3).toFixed(2) + ' GB' : '∞';
-  const exp = user.expiresAt ? new Date(user.expiresAt).toISOString().slice(0, 10) : '∞';
-  return `# NIGHTLINE · Railway · ${user.name} · usage ${used}GB / ${quota} · expires ${exp}
-# FREE & NOT FOR SALE — selling this service is prohibited`;
+  const u = usageSummary(user);
+  const quota = u.totalGb ? `${u.usedGb}GB / ${u.totalGb}GB` : `${u.usedGb}GB / unlimited`;
+  const left = u.remainingGb ? `${u.remainingGb} GB` : 'unlimited';
+  const days = u.days === null ? 'never' : `${u.days} day(s) left`;
+  const exp = u.expires || 'never';
+  return [
+    `# NIGHTLINE · Railway · ${user.name}`,
+    `# credits ${quota} · remaining ${left}`,
+    `# valid until ${exp} · ${days}`,
+    `# ${FREE_LINE}`,
+    `# ${FREE_LINE_FA}`,
+    `# source ${REPO_URL}`,
+  ].join('\n');
 }
 
 export function plainText(doc, user) {
@@ -127,6 +163,9 @@ export function xrayJson(doc, user) {
     ['vless', 'vmess', 'trojan', 'shadowsocks'].includes(l.protocol),
   );
   const outbounds = [];
+  // NOTE: Xray removed the `fragment` outbound in current cores (`unknown config id:
+  // fragment`), so fragmenting is only offered in the sing-box output. Xray users turn
+  // on “Fragment” in v2rayNG / Hiddify / NekoBox instead.
   for (const link of links) {
     const ob = xrayOutbound({ ...link, uuid: user.secrets.uuid, password: user.secrets.password });
     if (ob) outbounds.push(ob);
@@ -136,7 +175,11 @@ export function xrayJson(doc, user) {
   return {
     remarks: `NIGHTLINE · Railway · ${user.name}`,
     log: { loglevel: 'warning' },
-    dns: { servers: ['1.1.1.1', '8.8.8.8'] },
+    dns: {
+      // DoH first: plain UDP:53 is hijacked by most Iranian ISPs
+      servers: ['https+local://1.1.1.1/dns-query', 'https+local://8.8.8.8/dns-query', 'localhost'],
+      queryStrategy: 'UseIPv4',
+    },
     inbounds: [
       { tag: 'socks', port: 10808, listen: '127.0.0.1', protocol: 'socks', settings: { udp: true } },
       { tag: 'http', port: 10809, listen: '127.0.0.1', protocol: 'http', settings: {} },
@@ -145,7 +188,13 @@ export function xrayJson(doc, user) {
     routing: {
       domainStrategy: 'AsIs',
       rules: [
-        { type: 'field', ip: ['geoip:private'], outboundTag: 'block' },
+        // literal private ranges — a `geoip:private` rule needs geoip.dat beside the
+        // binary and kills the whole client config when that file is absent
+        {
+          type: 'field',
+          ip: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '127.0.0.0/8', '169.254.0.0/16', '::1/128', 'fc00::/7', 'fe80::/10'],
+          outboundTag: 'direct',
+        },
         { type: 'field', network: 'tcp,udp', outboundTag: outbounds[0]?.tag || 'direct' },
       ],
     },
@@ -154,8 +203,11 @@ export function xrayJson(doc, user) {
 
 /* ── sing-box client config ──────────────────────────────────────────── */
 
-function singboxOutbound(link, user) {
+function singboxOutbound(link, user, opts = {}) {
   const c = link.conn;
+  // sing-box takes a plain boolean here (the length/interval knobs of other
+  // clients do not exist in the schema), and it splits the ClientHello for us.
+  const tlsFrag = () => (opts.fragment === false ? {} : { fragment: true });
   const tls = (insecure = false) => {
     if (c.security === 'reality') {
       return {
@@ -171,6 +223,7 @@ function singboxOutbound(link, user) {
       insecure: insecure || c.security === 'tls-self',
       utls: { enabled: true, fingerprint: c.fingerprint },
       ...(c.security === 'tls-edge' ? { alpn: ['h2', 'http/1.1'] } : {}),
+      ...tlsFrag(),
     };
   };
   const base = { tag: link.label, server: c.host, server_port: Number(c.port) };
@@ -234,7 +287,7 @@ function singboxOutbound(link, user) {
 export function singboxJson(doc, user) {
   const links = buildUserLinks(doc, user);
   const outbounds = links
-    .map((l) => singboxOutbound(l, user))
+    .map((l) => singboxOutbound(l, user, doc.settings || {}))
     .filter(Boolean);
   const tags = outbounds.map((o) => o.tag);
   return {

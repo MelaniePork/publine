@@ -53,6 +53,9 @@ function defaults() {
       publicStatus: true,
       autoRestartCores: true,
       lowMemory: true,
+      // Client-side TLS-hello fragment. Splitting the ClientHello into two packets
+      // is the single most effective Iranian-DPI workaround and costs ~10 ms.
+      fragment: true,
       telegram: {
         mtproto: {
           enabled: false,

@@ -62,7 +62,9 @@ function usersFor(ib, users, ctx) {
   const active = users.filter((u) => effectiveEnabled(u));
   const params = ib.params || {};
   if (ib.protocol === 'vless' || ib.protocol === 'vmess') {
-    return active.map((u) => ({ name: `u-${u.id}`, uuid: u.secrets.uuid, flow: params.flow || '' }));
+    // sing-box 1.12+ rejects `flow` on inbound users ("json: unknown field"),
+    // and inbound VTLS flow is not needed for a working tunnel anyway.
+    return active.map((u) => ({ name: `u-${u.id}`, uuid: u.secrets.uuid }));
   }
   if (ib.protocol === 'trojan' || ib.protocol === 'anytls') {
     return active.map((u) => ({ name: `u-${u.id}`, password: u.secrets.password }));

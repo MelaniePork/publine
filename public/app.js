@@ -146,16 +146,27 @@ function coreBadge(status) {
 function renderStatusBar() {
   const st = S.state;
   if (!st) return;
-  const x = st.cores.xray;
-  const sb = st.cores.singbox;
-  const mt = st.cores.mtproto;
-  $('#ledger-items').innerHTML = [
-    `<span><b>XRAY</b> ${x.status.toUpperCase()}</span>`,
-    `<span><b>SING-BOX</b> ${sb.status.toUpperCase()}</span>`,
-    `<span><b>MTPROTO</b> ${mt.status.toUpperCase()}</span>`,
-    `<span><b>TCP</b> ${st.facts.tcpReady ? `${esc(st.facts.tcpHost)}:${st.facts.tcpPort}` : 'OFF'}</span>`,
-    `<span><b>HTTPS</b> ${st.facts.publicHost ? esc(st.facts.publicHost) : 'OFF'}</span>`,
-  ].join('');
+  const cells = [
+    ['XRAY-CORE', st.cores.xray.status, st.cores.xray.status === 'running'],
+    ['SING-BOX', st.cores.singbox.status, st.cores.singbox.status === 'running'],
+    ['MTPROTO', st.cores.mtproto.status, st.cores.mtproto.status === 'running'],
+    [t('پروکسی TCP', 'TCP PROXY'), st.facts.tcpReady ? `${st.facts.tcpHost}:${st.facts.tcpPort}` : 'OFF', st.facts.tcpReady],
+    [t('دامنهٔ HTTPS', 'HTTPS DOMAIN'), st.facts.publicHost || 'OFF', Boolean(st.facts.publicHost)],
+  ];
+  // `label` already carries markup (t() returns both language spans).
+  // Values may wrap (a Railway domain is long) but the `:port` suffix must stay
+  // glued to the host, otherwise it breaks in the middle of the number.
+  const valueHtml = (raw) => {
+    const m = /^([^:\s]+)(:\d+)$/.exec(String(raw || ''));
+    if (m) return `${esc(m[1])}<span class="nw">${esc(m[2])}</span>`;
+    return esc(String(raw || '—'));
+  };
+  $('#ledger-items').innerHTML = cells.map(([label, value, ok]) => `
+    <div class="s-cell ${ok ? 'on' : 'off'}${String(value || '').length > 18 ? ' wide' : ''}">
+      <span class="s-dot"></span>
+      <span class="s-label">${label}</span>
+      <span class="s-value" dir="ltr" title="${esc(String(value || ''))}">${valueHtml(value)}</span>
+    </div>`).join('');
   $('#top-region').textContent = `RAILWAY · ${(st.facts.region || 'auto').toUpperCase()}`;
   $('#edition').textContent = `EDITION V${st.app.version}`;
   $('#mode-pill').textContent = `FREE & OPEN · V${st.app.version}`;
@@ -173,12 +184,12 @@ function renderStatusBar() {
 }
 
 const TABS = [
-  { id: 'dashboard', icon: 'gauge', fa: 'داشبورد', en: 'DASHBOARD' },
+  { id: 'dashboard', icon: 'gauge', fa: 'نمای کلی', en: 'OVERVIEW' },
   { id: 'easy', icon: 'bolt', fa: 'تنظیم آسان', en: 'EASY SETUP' },
   { id: 'railynx', icon: 'radar', fa: 'Railynx', en: 'RAILYNX' },
-  { id: 'inbounds', icon: 'layers', fa: 'پروتکل‌ها', en: 'PROTOCOLS' },
+  { id: 'inbounds', icon: 'layers', fa: 'روش‌های اتصال', en: 'METHODS' },
   { id: 'users', icon: 'users', fa: 'کاربران', en: 'USERS' },
-  { id: 'delivery', icon: 'send', fa: 'تحویل و ساب', en: 'DELIVERY' },
+  { id: 'delivery', icon: 'send', fa: 'لینک و اشتراک', en: 'LINKS & SUBS' },
   { id: 'telegram', icon: 'telegram', fa: 'تلگرام', en: 'TELEGRAM' },
   { id: 'cores', icon: 'cpu', fa: 'هسته‌ها', en: 'CORES' },
   { id: 'settings', icon: 'sliders', fa: 'تنظیمات', en: 'SETTINGS' },
@@ -363,12 +374,27 @@ function renderRailynx() {
   const defaults = d.defaults || { cidr: '69.46.46.0/24', concurrency: 12 };
 
   pane.innerHTML = `
+  <div class="credit-card" style="margin:0 0 14px">
+    <div class="who">
+      <b>${t('اعتبار Railynx', 'Railynx credits')}</b>
+      <span>${t('روش اسکن آی‌پی تمیز و منطق سه‌پروبی، ساختهٔ CuteMeowl است.', 'The clean-IP scan method and the three-probe logic are by CuteMeowl.')}</span>
+    </div>
+    <div class="links">
+      <a class="repo-chip" href="https://github.com/CuteMeowl" target="_blank" rel="noopener">
+        <svg class="ic ic-sm ic-brand"><use href="#i-github"/></svg>CuteMeowl
+      </a>
+      <a class="repo-chip" href="https://t.me/arblant" target="_blank" rel="noopener">
+        <svg class="ic ic-sm ic-brand"><use href="#i-telegram"/></svg>@arblant
+      </a>
+    </div>
+  </div>
+
   <div class="cols">
     <div class="card">
       <p class="kicker">${icon('radar')}${t('Railynx · اسکنر آی‌پی تمیز ریلوی', 'RAILYNX · RAILWAY CLEAN-IP SCANNER')}</p>
       <p class="lede">${t(
-        'یک لینک VLESS می‌گیرد، رنج آی‌پی را می‌گردد و فقط آی‌پی‌هایی را نگه می‌دارد که سه بار پشت سر هم هندشیک کامل TLS + WebSocket + VLESS را با پاسخ ۲۰۴ رد کنند. فقط آدرس عوض می‌شود؛ بقیهٔ لینک دست‌نخورده می‌ماند.',
-        'Takes a VLESS link, sweeps a CIDR block, and keeps only addresses that pass a full TLS + WebSocket + VLESS round trip three times in a row. Only the address changes; the rest of the link stays as it is.',
+        'یک لینک VLESS می‌گیرد، رنج آی‌پی را می‌گردد و آی‌پی‌های تمیز را بر اساس تأخیر مرتب می‌کند. برای لینک‌های WebSocket سه پروب کامل (TLS + WS + VLESS + پاسخ ۲۰۴) اجرا می‌شود؛ بقیهٔ لینک‌ها تأخیر TLS می‌گیرند. فقط آدرس عوض می‌شود؛ بقیهٔ لینک دست‌نخورده می‌ماند.',
+        'Takes a VLESS link, sweeps a CIDR block and sorts the clean addresses by latency. WebSocket links get three full probes (TLS + WS + VLESS + 204); other links get a TLS latency. Only the address changes; everything else stays identical.',
       )}</p>
 
       <label class="fld-label">${t('لینک VLESS (نوع WS)', 'VLESS LINK (WS)')}</label>
@@ -388,7 +414,11 @@ function renderRailynx() {
           <input type="number" id="rl-workers" min="1" max="32" value="${esc(d.concurrency || defaults.concurrency)}">
         </div>
       </div>
-      <p class="hint">${t('هر آی‌پی ۳ پروب با فاصلهٔ ۶۰ میلی‌ثانیه می‌گیرد؛ اگر یکی بیفتد حذف می‌شود. تایم‌اوت اتصال ۲۴۰۰ میلی‌ثانیه است.', 'Each address gets 3 probes 60 ms apart; one miss drops it. Connect timeout is 2400 ms.')}</p>
+      <p class="hint">${t(
+        'هر آی‌پی ۳ پروب با فاصلهٔ ۶۰ میلی‌ثانیه می‌گیرد؛ اگر یکی بیفتد حذف می‌شود. لینک WebSocket با پنج مرحلهٔ کامل (TLS + WS + VLESS + ۲۰۴) سنجیده می‌شود؛ بقیهٔ لینک‌ها (TCP خام، REALITY، XHTTP) فقط تأخیر TLS را می‌دهند.',
+        'Each address gets 3 probes 60 ms apart. WebSocket links run the full five-step check (TLS + WS + VLESS + 204); other transports (raw TCP, REALITY, XHTTP) return a TLS-latency figure only.',
+      )}</p>
+      ${d.mode ? `<p class="muted" style="margin-top:6px">${t('حالت فعلی:', 'Current mode:')} <b class="mono">${esc(d.mode === 'full' ? 'FULL · WS+VLESS+204' : 'PING · TLS ONLY')}</b></p>` : ''}
 
       <div class="actions">
         <button class="btn primary" data-act="rl-start" type="button" ${d.running ? 'disabled' : ''}>
@@ -466,6 +496,7 @@ function switchTab(id) {
   S.editing = null;
   $$('.tab-pane').forEach((pane) => { pane.hidden = pane.dataset.pane !== id; });
   renderNav();
+  renderPane(id);
   if (id === 'easy') { loadEasy().then(() => { if (S.tab === 'easy') renderEasy(); }).catch(() => {}); }
   if (id === 'railynx') { railynxPoll(); }
   if (id !== 'railynx') stopRailynxPolling();
@@ -813,6 +844,29 @@ function renderUsers() {
     ${freeStrip()}`;
 }
 
+const LINK_ORDER = ['vless:reality', 'vless:ws', 'trojan:ws', 'vless:xhttp', 'vless:httpupgrade', 'trojan:tcp', 'vless:tcp', 'vmess:ws', 'shadowsocks', 'anytls', 'shadowtls', 'hysteria2', 'tuic', 'wireguard'];
+function linkRank(link) {
+  const key = `${link.protocol}:${link.transport}`;
+  const exact = LINK_ORDER.indexOf(key);
+  if (exact >= 0) return exact;
+  const loose = LINK_ORDER.findIndex((k) => !k.includes(':') && link.protocol === k);
+  return loose >= 0 ? loose + 100 : 900;
+}
+/** Links sorted the way a client presents them: reliable first, exotic last. */
+function sortedLinks(user) {
+  return [...(user.links || [])].sort((a, b) => linkRank(a) - linkRank(b));
+}
+
+// results of the last "ping" run in the links dialog, keyed by link label
+const LINK_PING = new Map();
+
+function pingChip(link) {
+  const r = LINK_PING.get(link.label);
+  if (!r) return '';
+  if (!r.ok) return `<span class="ping bad" dir="ltr" title="${esc(r.error || 'fail')}">${t('قطع', 'fail')}</span>`;
+  return `<span class="ping ok" dir="ltr">${r.ms} ms</span>`;
+}
+
 function showUserLinks(userId) {
   const st = S.state;
   const user = st.users.find((u) => u.id === userId);
@@ -839,12 +893,20 @@ function showUserLinks(userId) {
       </div>
     </div>
     <div class="dashed"></div>
-    <p class="kicker" style="margin-bottom:6px">${icon('link')}${t('لینک مستقیم هر پروتکل', 'PER-PROTOCOL LINKS')}</p>
-    <div class="user-links" style="max-height:260px;overflow:auto">
-      ${user.links.map((link) => `
+    <div class="spread" style="align-items:center;margin-bottom:6px">
+      <p class="kicker" style="margin:0">${icon('link')}${t('لینک مستقیم هر روش', 'PER-METHOD LINKS')}</p>
+      <div class="row">
+        <button class="mini" data-act="ping-links" data-arg="${esc(user.id)}" type="button">${icon('radar', 'ic ic-sm')} ${t('پینگ', 'PING')}</button>
+        <button class="mini" data-act="copy" data-arg="${esc(sortedLinks(user).map((l) => l.uri).join('\n'))}" type="button" title="copy all">${icon('file', 'ic ic-sm')}</button>
+        <span class="muted" style="font-size:10px">${t('همه', 'ALL')}</span>
+      </div>
+    </div>
+    <div class="user-links" style="max-height:280px;overflow:auto">
+      ${sortedLinks(user).map((link) => `
         <div class="link-row">
-          <span class="lk-name">${esc(link.protocol.toUpperCase())} · ${esc(link.transport)}</span>
-          <span class="lk-uri">${esc(link.uri)}</span>
+          <span class="lk-name">${esc(link.short || `${link.protocol.toUpperCase()} · ${link.transport}`)}</span>
+          <span class="lk-uri" dir="ltr">${esc(link.uri)}</span>
+          ${pingChip(link)}
           <button class="mini" data-act="copy" data-arg="${esc(link.uri)}" type="button" title="copy">${icon('copy', 'ic ic-sm')}</button>
           <button class="mini" data-act="qr" data-arg="${esc(link.uri)}" type="button" title="qr">${icon('qr', 'ic ic-sm')}</button>
         </div>`).join('')}
@@ -1167,7 +1229,8 @@ async function refreshLogs() {
   if (!consoleEl) return;
   try {
     const data = await api(`/api/logs?source=${S.logSource}`);
-    const lines = (data.lines || []).slice(-150);
+    const strip = (v) => String(v).replace(/[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[-a-zA-Z\d/#&.:=?%@~_]+)*)?\u0007)|(?:(?:\d{1,4}(?:[;:]\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/g, '');
+    const lines = (data.lines || []).slice(-150).map(strip);
     consoleEl.innerHTML = lines.length
       ? lines.map((line) => `<span class="ln ${/error|fail|cannot|denied/i.test(line) ? 'err' : /warn/i.test(line) ? 'warn' : ''}">${esc(line)}</span>`).join('')
       : '<span class="ln">—</span>';
@@ -1211,6 +1274,32 @@ function renderSettings() {
         <div class="actions">
           <button class="btn primary" data-act="save-settings" type="button">${icon('save', 'ic ic-sm')}${t('ذخیره', 'SAVE')}</button>
         </div>
+      </div>
+
+      <div class="card">
+        <p class="kicker">${icon('shield')}${t('کمک به عبور از DPI', 'DPI ASSIST')}</p>
+        <label class="chk"><input type="checkbox" id="s-fragment" ${st.settings.fragment !== false ? 'checked' : ''}>
+          ${t('شکستن ClientHello در اشتراک sing-box (Fragment)', 'Split the ClientHello in the sing-box subscription')}</label>
+        <p class="hint">${t(
+          'دو بایت اول ClientHello دو تکه فرستاده می‌شود و DPI ایران کمتر آن را می‌شناسد. هستهٔ Xray این قابلیت را حذف کرده، پس برای لینک‌های Xray همین گزینه را در v2rayNG / Hiddify / NekoBox روشن کن.',
+          'The ClientHello leaves in two pieces, so Iranian DPI fingerprints it far less often. Current Xray cores dropped this feature, so for Xray links turn on “Fragment” inside v2rayNG / Hiddify / NekoBox.',
+        )}</p>
+        <div class="actions">
+          <button class="btn sm-btn" data-act="save-fragment" type="button">${icon('save', 'ic ic-sm')}${t('ذخیره', 'SAVE')}</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="kicker">${icon('github', 'ic ic-brand')}${t('درباره و مخزن پروژه', 'ABOUT & REPOSITORY')}</p>
+        <div class="stack-sm">
+          <a class="repo-chip" href="https://github.com/youdidking/NightLine-Railway" target="_blank" rel="noopener">
+            <svg class="ic ic-sm ic-brand"><use href="#i-github"/></svg>youdidking/NightLine-Railway
+          </a>
+          <a class="repo-chip" href="https://t.me/arblant" target="_blank" rel="noopener">
+            <svg class="ic ic-sm ic-brand"><use href="#i-telegram"/></svg>Railynx · @arblant
+          </a>
+        </div>
+        <p class="hint">${t('نسخهٔ نصب‌شده: ' + st.app.version + ' · پنل رایگان است و فروش آن ممنوع.', 'Installed version: ' + st.app.version + ' · free panel, never for sale.')}</p>
       </div>
 
       <div class="card">
@@ -1346,6 +1435,16 @@ async function onAction(act, arg, el) {
       return switchTab(arg);
     case 'copy':
       return copyText(arg);
+    case 'ping-links': {
+      LINK_PING.clear();
+      showUserLinks(arg);
+      const r = await api('/api/links/ping', { method: 'POST', body: { userId: arg } });
+      for (const x of r.results || []) LINK_PING.set(x.label, { ok: x.ok, ms: x.ms, error: x.error });
+      showUserLinks(arg);
+      const ok = (r.results || []).filter((x) => x.ok).length;
+      toast(`${ok}/${(r.results || []).length} ${t('لینک پاسخ داد', 'links answered')}`);
+      return;
+    }
     case 'qr':
       return openModal('QR', `<div class="qr-center"><div class="qrbox qr"><div id="modal-qr"></div></div><p class="code-line" style="margin-top:8px;max-height:80px;overflow:auto">${esc(arg)}</p></div>`) || qrInto($('#modal-qr'), arg);
     case 'apply':
@@ -1555,6 +1654,11 @@ async function onAction(act, arg, el) {
           logLevel: $('#s-loglevel')?.value || 'warning',
         },
       }));
+    case 'save-fragment':
+      return withState(() => api('/api/settings', {
+        method: 'POST',
+        body: { fragment: $('#s-fragment')?.checked ?? true },
+      }));
     case 'save-cores':
       return withState(() => api('/api/settings', {
         method: 'POST',
@@ -1659,22 +1763,32 @@ async function submitAuth(ev) {
 
 /* ── boot & refresh ──────────────────────────────────────────────────── */
 
+const PANE_RENDERERS = {
+  dashboard: () => renderDashboard(),
+  easy: () => renderEasy(),
+  railynx: () => renderRailynx(),
+  inbounds: () => renderInbounds(),
+  users: () => renderUsers(),
+  delivery: () => renderDelivery(),
+  telegram: () => renderTelegram(),
+  cores: () => renderCores(),
+  settings: () => renderSettings(),
+};
+
+/** Render only the pane the operator is looking at — nine panes is too much work. */
+function renderPane(id = S.tab) {
+  const run = PANE_RENDERERS[id];
+  if (run) run();
+}
+
 function renderAll() {
   $('#boot').hidden = true;
   $('#auth').hidden = true;
   $('#app').hidden = false;
   renderStatusBar();
   renderNav();
-  renderDashboard();
-  renderEasy();
-  renderRailynx();
-  renderInbounds();
-  renderUsers();
-  renderDelivery();
-  renderTelegram();
-  renderCores();
-  renderSettings();
   $$('.tab-pane').forEach((pane) => { pane.hidden = pane.dataset.pane !== S.tab; });
+  renderPane(S.tab);
 }
 
 async function loadState() {

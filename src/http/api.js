@@ -6,7 +6,9 @@
  * served outside the authenticated API so clients can fetch them directly.
  */
 import net from 'node:net';
+import zlib from 'node:zlib';
 import { analyse, applyProfile } from '../iran.js';
+import { stripAnsi } from '../text.js';
 import { scanner, DEFAULTS as RAILYNX_DEFAULTS, parseVlessLink } from '../railynx.js';
 import { readFileSync } from 'node:fs';
 import { APP, RAILWAY, IS_RAILWAY, DATA_DIR, PORT, MUX_PORT, BIN, NODE_ENV, LIMITS } from '../env.js';
@@ -45,11 +47,21 @@ const FORMATS = new Set(['base64', 'links', 'xray', 'singbox', 'clash']);
 
 function send(res, status, body, headers = {}) {
   const payload = typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body);
-  res.writeHead(status, {
+  const base = {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
     ...headers,
-  });
+  };
+  // /api/state and /api/easy-setup are tens of kilobytes; gzip makes them ~10×
+  // smaller on a mobile connection.
+  const acceptsGzip = /\bgzip\b/.test(res.req?.headers?.['accept-encoding'] || '');
+  if (acceptsGzip && payload.length > 2048 && !base['Content-Encoding']) {
+    const packed = zlib.gzipSync(payload, { level: 5 });
+    res.writeHead(status, { ...base, 'Content-Encoding': 'gzip', 'Content-Length': packed.length, Vary: 'Accept-Encoding' });
+    res.end(packed);
+    return;
+  }
+  res.writeHead(status, { ...base, 'Content-Length': Buffer.byteLength(payload) });
   res.end(payload);
 }
 
@@ -366,7 +378,7 @@ export async function handleApi(ctx) {
     const body = await readBody(req);
     const allowed = [
       'publicHost', 'tcpHost', 'tcpPort', 'theme', 'lang', 'brand', 'tag',
-      'autoRestartCores', 'lowMemory', 'publicStatus', 'logLevel',
+      'autoRestartCores', 'lowMemory', 'publicStatus', 'logLevel', 'fragment',
     ];
     setDoc((d) => {
       for (const key of allowed) {
@@ -691,7 +703,7 @@ export async function handleApi(ctx) {
       singbox: snapshot.singbox.lines,
       mtproto: snapshot.mtproto.lines,
     };
-    return send(res, 200, { source, lines: map[source] || [] });
+    return send(res, 200, { source, lines: (map[source] || []).map((l) => stripAnsi(l)) });
   }
 
   if (route === 'GET /api/backup') {
@@ -711,6 +723,24 @@ export async function handleApi(ctx) {
     load();
     await runtime.apply({ reason: 'restore' });
     return send(res, 200, { ok: true, state: buildState(runtime, req) });
+  }
+
+  if (route === 'POST /api/links/ping') {
+    const body = await readBody(req);
+    const doc = runtime.withRuntime(getDoc());
+    const user = (doc.users || []).find((u) => u.id === body.userId) || (doc.users || [])[0];
+    if (!user) return send(res, 400, { error: 'no user' });
+    const links = buildUserLinks(doc, user);
+    // one TCP handshake per unique endpoint — the host:port pairs repeat across
+    // transports, so this stays cheap even with a dozen links
+    const cache = new Map();
+    const results = await Promise.all(links.map(async (l) => {
+      const key = `${l.conn.host}:${l.conn.port}`;
+      if (!cache.has(key)) cache.set(key, probeTcp(l.conn.host, Number(l.conn.port)));
+      const r = await cache.get(key);
+      return { label: l.label, ok: r.ok, ms: r.ms, host: l.conn.host, port: Number(l.conn.port), error: r.error || '' };
+    }));
+    return send(res, 200, { results, at: Date.now() });
   }
 
   if (route === 'POST /api/tools/probe') {

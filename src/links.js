@@ -99,6 +99,7 @@ export function toUri(doc, conn, user, label) {
         alpn: conn.security === 'tls-edge' ? conn.alpn : '',
         pbk: conn.publicKey || '',
         sid: conn.shortId || '',
+        spx: conn.security === 'reality' ? conn.spiderX || '/' : undefined,
         flow: conn.flow || '',
         path: conn.transport === 'grpc' ? undefined : conn.path,
         host: conn.hostHeader,
@@ -158,6 +159,13 @@ export function toUri(doc, conn, user, label) {
   }
 }
 
+/** Short, human label used in the panel lists ("VLESS·WS·TLS"). */
+export function shortFor(inbound) {
+  const tr = inbound.transport && inbound.transport !== 'tcp' ? `·${inbound.transport.toUpperCase()}` : '';
+  const sec = inbound.security === 'reality' ? '·REALITY' : inbound.security === 'tls-self' ? '·TLS' : '';
+  return `${inbound.protocol.toUpperCase()}${tr}${sec}`;
+}
+
 export function labelFor(doc, inbound, user) {
   const brand = doc.settings.brand || 'NIGHTLINE';
   const tag = doc.settings.tag || 'Railway';
@@ -165,7 +173,7 @@ export function labelFor(doc, inbound, user) {
   const proto = `${inbound.protocol.toUpperCase()}`;
   const tr = inbound.transport && inbound.transport !== 'tcp' ? `·${inbound.transport.toUpperCase()}` : '';
   const sec = inbound.security === 'reality' ? '·REALITY' : '';
-  return `${brand} ${tag} · ${core}·${proto}${tr}${sec}`.replace(/\s+/g, ' ');
+  return `${brand} ${tag} ${core}·${proto}${tr}${sec} · FREE`.replace(/\s+/g, ' ');
 }
 
 /** All links for one user, one per enabled inbound. */
@@ -185,6 +193,7 @@ export function buildUserLinks(doc, user) {
     if (!uri) continue;
     out.push({
       id: inbound.id,
+      short: shortFor(inbound),
       presetId: inbound.presetId,
       core: inbound.core,
       protocol: inbound.protocol,

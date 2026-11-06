@@ -224,7 +224,14 @@ export function buildXrayConfig({ doc, reality, certs, sharedSsPassword, serverS
       rules: [
         // the api inbound must be routed first: its destination is 127.0.0.1
         { type: 'field', inboundTag: ['api-in'], outboundTag: 'api' },
-        { type: 'field', ip: ['geoip:private'], outboundTag: 'block' },
+        // Plain private ranges instead of `geoip:private`: that rule needs
+        // geoip.dat next to the binary, and a missing dat file used to take the
+        // whole core down ("failed to open geoip.dat").
+        {
+          type: 'field',
+          ip: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '127.0.0.0/8', '169.254.0.0/16', '::1/128', 'fc00::/7', 'fe80::/10'],
+          outboundTag: 'block',
+        },
       ],
     },
   };

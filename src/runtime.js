@@ -13,6 +13,7 @@ import { buildSingboxConfig } from './config/singbox.js';
 import { ensureCerts, ensureReality } from './config/certs.js';
 import { TrafficAccountant, queryStats, sysStats } from './stats.js';
 import { describeInbound } from './catalog.js';
+import { coreReason } from './text.js';
 import {
   get as getDoc,
   set as setDoc,
@@ -191,7 +192,7 @@ export class Runtime extends EventEmitter {
     if (wantXray) {
       let ok = await this.cores.xray.start(xrayConfig);
       if (!ok && xrayConfig !== xray.config) {
-        notes.xray = shortReason(this.cores.xray.lastError);
+        notes.xray = `override rejected: ${coreReason(this.cores.xray.lastError)}`;
         this.raw.notes = notes;
         this.raw.active.xray = this.raw.generated.xray;
         this.raw.override.xray = false;
@@ -205,7 +206,7 @@ export class Runtime extends EventEmitter {
     if (wantSingbox) {
       let ok = await this.cores.singbox.start(singboxConfig);
       if (!ok && singboxConfig !== singbox.config) {
-        notes.singbox = shortReason(this.cores.singbox.lastError);
+        notes.singbox = `override rejected: ${coreReason(this.cores.singbox.lastError)}`;
         this.raw.notes = notes;
         this.raw.active.singbox = this.raw.generated.singbox;
         this.raw.override.singbox = false;

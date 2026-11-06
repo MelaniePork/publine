@@ -314,3 +314,61 @@ html[dir="rtl"] .tgl input:checked + .track::after{transform:translateX(-18px)}
   .tab-btn .tab-lbl{gap:5px;white-space:nowrap}
   .tab-btn .tnum{font-size:9px}
 }
+
+/* ── status board (top of the panel) ───────────────────────────────────── */
+.status-board{
+  display:flex;flex-wrap:wrap;align-items:stretch;gap:10px;
+  border:1.5px solid var(--ink);padding:10px;margin-top:12px;background:var(--paper);
+}
+.status-grid{
+  flex:1 1 640px;min-width:0;display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;
+}
+.s-cell{
+  display:grid;grid-template-columns:auto 1fr;grid-template-areas:"dot label" "dot value";
+  align-items:center;gap:0 8px;padding:6px 9px;border:1.2px dotted var(--ink);min-width:0;
+}
+.s-cell .s-dot{grid-area:dot;width:8px;height:8px;border:1.5px solid var(--ink)}
+.s-cell.on .s-dot{background:var(--ink)}
+.s-cell.off{border-style:dashed;opacity:.62}
+.s-cell .s-label{grid-area:label;font-size:10px;letter-spacing:.1em;text-transform:uppercase;opacity:.7;white-space:nowrap}
+.s-cell .s-value{
+  grid-area:value;font-family:var(--mono);font-size:11px;line-height:1.35;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.status-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* repo / credit links */
+.repo-chip,.foot-link{
+  display:inline-flex;align-items:center;gap:6px;border:1.2px solid var(--ink);
+  padding:2px 8px;font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;
+  text-decoration:none;color:inherit;direction:ltr;white-space:nowrap;
+}
+.repo-chip:hover,.foot-link:hover{background:var(--ink);color:var(--paper)}
+.free-ribbon{flex-wrap:wrap;gap:6px 10px}
+.colophon{flex-wrap:wrap;gap:8px 14px}
+
+/* never let long machine text punch out of a card */
+.card,.cols,.cols>*,.row-line{min-width:0}
+.tbl{width:100%;table-layout:auto}
+.console,.raw-box,.uri,.mono{overflow-wrap:anywhere}
+.console{white-space:pre-wrap;max-height:320px;overflow:auto}
+
+/* railynx credit */
+.credit-card{
+  display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;
+  border:1.5px dashed var(--ink);padding:9px 12px;margin-top:12px;
+}
+.credit-card .who{display:flex;flex-direction:column;gap:2px;min-width:0}
+.credit-card .who b{font-size:12.5px}
+.credit-card .who span{font-size:11px;opacity:.72;line-height:1.6}
+.credit-card .links{display:flex;gap:8px;flex-wrap:wrap}
+.s-cell.wide .s-value{font-size:10.5px;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
+.status-grid .s-cell.wide{min-width:0}
+
+/* link ping chips */
+.ping{font-family:var(--mono);font-size:10px;padding:1px 5px;border:1.2px solid var(--ink);white-space:nowrap}
+.ping.ok{background:var(--ink);color:var(--paper)}
+.ping.bad{border-style:dashed;opacity:.65}
+.s-cell .nw{white-space:nowrap}
+.repo-chip svg,.foot-link svg{flex:0 0 auto}
