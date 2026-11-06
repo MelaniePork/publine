@@ -12,7 +12,9 @@ const REDACT_JS = () => {
     .redact .qrbox{filter:none !important}`;
   document.head.append(style);
 
-  const SECRET = /([0-9a-f]{16,})|(vless:\/\/|trojan:\/\/|ss:\/\/|vmess:\/\/|hysteria2:\/\/|tg:\/\/|t\.me\/proxy|t\.me\/socks|nl-[a-z0-9]{5,})/i;
+  // subscription tokens, protocol URIs, uuid-ish strings and route keys must
+  // never reach a screenshot
+  const SECRET = /([0-9a-f]{16,})|(\/sub\/)|(vless:\/\/|trojan:\/\/|ss:\/\/|vmess:\/\/|anytls:\/\/|hysteria2:\/\/|tg:\/\/|t\.me\/proxy|t\.me\/socks|nl-[a-z0-9]{5,})|([A-Za-z0-9_-]{18,})/i;
   const SKIP = ['SCRIPT', 'STYLE', 'HTML'];
 
   document.querySelectorAll('*').forEach((el) => {

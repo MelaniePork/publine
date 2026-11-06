@@ -12,6 +12,8 @@ const S = {
   logSource: 'xray',
   logTimer: null,
   refreshTimer: null,
+  update: null,      // last /api/update answer
+  updateBusy: false,
   busy: false,
 };
 
@@ -20,6 +22,9 @@ const S = {
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const t = (fa, en) => `<span class="fa">${fa}</span><span class="en">${en}</span>`;
+// Plain-text twin of t() for places that cannot hold markup (toasts, titles,
+// aria-labels). Using t() there printed the raw <span> tags on screen.
+const tt = (fa, en) => (document.documentElement.lang === 'en' ? en : fa);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const icon = (name, cls = 'ic') => `<svg class="${cls}"><use href="#i-${name}"/></svg>`;
 
@@ -64,7 +69,9 @@ function relTime(ms) {
 function toast(message, kind = 'ok') {
   const el = $('#toast');
   el.hidden = false;
-  el.textContent = message;
+  // callers may pass a translated string; strip any markup so a stray t() can
+  // never paint raw tags again
+  el.textContent = String(message).replace(/<[^>]+>/g, '');
   el.className = `toast ${kind}`;
   clearTimeout(toast._t);
   toast._t = setTimeout(() => { el.hidden = true; }, 3200);
@@ -645,9 +652,11 @@ function renderInbounds() {
   const cards = st.inbounds.map((ib) => {
     const editing = S.editing === ib.id;
     const badgeCore = ib.core === 'xray' ? 'xray' : 'singbox';
-    const reach = ib.reachable
-      ? `<span class="chip ok">${t('قابل استفاده', 'USABLE')}</span>`
-      : `<span class="chip warn">${t('غیرفعال روی ریلوی', 'BLOCKED')}</span>`;
+    const reach = !ib.reachable
+      ? `<span class="chip warn">${t('غیرفعال روی ریلوی', 'BLOCKED')}</span>`
+      : ib.tier === 'verified'
+        ? `<span class="chip ok">${t('تست‌شده', 'VERIFIED')}</span>`
+        : `<span class="chip warn">${t('آزمایشی', 'LAB')}</span>`;
     return `
       <div class="proto-card ${ib.enabled ? '' : 'is-off'}">
         <div class="proto-head">
@@ -672,6 +681,10 @@ function renderInbounds() {
           ${ib.params.method ? `<span>cipher : <b>${esc(ib.params.method)}</b></span>` : ''}
         </div>
         ${ib.reason ? `<div class="note-inline">${t(esc(ib.reason.fa), esc(ib.reason.en))}</div>` : ''}
+        ${ib.tier === 'lab' && ib.reachable ? `<div class="note-inline">${t(
+          'روی دامنهٔ لبهٔ ریلوی قابل‌اعتماد نبود؛ فقط با دامنهٔ اختصاصی روشنش کن.',
+          'Was not reliable on the Railway edge; only enable it with a custom domain.',
+        )}</div>` : ''}
         ${editing ? renderInboundEditor(ib) : ''}
         <div class="proto-acts">
           <button class="btn sm-btn ghost" data-act="edit-inbound" data-arg="${ib.id}" type="button">${icon('edit', 'ic ic-sm')}${t('تنظیمات', 'EDIT')}</button>
@@ -816,7 +829,7 @@ function renderUsers() {
   }).join('');
 
   $('#pane-users').innerHTML = `
-    <div class="cols">
+    <div class="stack">
       <div class="card">
         <p class="kicker">${icon('plus')}${t('کاربر جدید', 'NEW SUBSCRIBER')}</p>
         <div class="field-grid">
@@ -831,6 +844,8 @@ function renderUsers() {
         </div>
         <p class="hint">${t('هر کاربر به‌صورت خودکار در همهٔ اینباندهای فعال با کلید اختصاصی (UUID، رمز، کلید SS-2022) ثبت می‌شود.', 'Every user is automatically provisioned on all enabled inbounds with a unique UUID, password and SS-2022 key.')}</p>
       </div>
+    </div>
+    <div class="user-list">${cards || `<p class="hint">${t('هنوز کاربری ساخته نشده است.', 'No subscribers yet.')}</p>`}</div>
       <div class="card card-subtle">
         <p class="kicker">${icon('info')}${t('قواعد شمارش', 'ACCOUNTING RULES')}</p>
         <ul class="check-list" style="grid-template-columns:1fr">
@@ -838,9 +853,7 @@ function renderUsers() {
           <li class="chk">${icon('clock', 'ic ic-sm')}${t('با رسیدن به سهمیه یا تاریخ انقضا، کاربر خودکار از همهٔ کانفیگ‌ها حذف می‌شود.', 'On quota/expiry the user is removed from every live config automatically.')}</li>
           <li class="chk">${icon('key', 'ic ic-sm')}${t('تعویض کلید، لینک‌های قبلی را برای همیشه باطل می‌کند.', 'Rotating keys invalidates every previous link instantly.')}</li>
         </ul>
-      </div>
-    </div>
-    <div class="user-list">${cards || `<p class="hint">${t('هنوز کاربری ساخته نشده است.', 'No subscribers yet.')}</p>`}</div>
+
     ${freeStrip()}`;
 }
 
@@ -1252,8 +1265,63 @@ function stopLogPolling() {
 
 /* ── settings ────────────────────────────────────────────────────────── */
 
+function renderUpdateBody() {
+  const u = S.update;
+  const cur = (S.state && S.state.app && S.state.app.version) || '';
+  if (!u) {
+    return `
+      <div class="upd-row">
+        <span class="upd-ver mono">v${esc(cur)}</span>
+        <span class="muted">${t('وضعیت بررسی نشده است.', 'Not checked yet.')}</span>
+      </div>
+      <div class="actions">
+        <button class="btn sm-btn" data-act="check-update" type="button">${icon('refresh', 'ic ic-sm')}${t('بررسی به‌روزرسانی', 'CHECK FOR UPDATE')}</button>
+      </div>`;
+  }
+  if (!u.ok) {
+    return `
+      <div class="upd-row">
+        <span class="upd-ver mono">v${esc(cur)}</span>
+        <span class="upd-state warn">${t('دسترسی به گیت‌هاب نشد', 'GitHub unreachable')}</span>
+      </div>
+      <p class="hint mono" dir="ltr">${esc(u.error || '')}</p>
+      <div class="actions">
+        <button class="btn sm-btn" data-act="check-update" type="button">${icon('refresh', 'ic ic-sm')}${t('تلاش دوباره', 'RETRY')}</button>
+        <a class="btn sm-btn ghost" href="${esc(u.repo)}" target="_blank" rel="noopener">${icon('github', 'ic ic-sm ic-brand')}${t('مخزن', 'REPO')}</a>
+      </div>`;
+  }
+  const notes = (u.notes || '').split('\n').slice(0, 8);
+  return `
+    <div class="upd-row">
+      <span class="upd-ver mono">v${esc(cur)}</span>
+      <span class="upd-arrow">→</span>
+      <span class="upd-ver mono ${u.updateAvailable ? 'new' : ''}">${u.latest ? `v${esc(u.latest)}` : '—'}</span>
+      <span class="upd-state ${u.updateAvailable ? 'new' : 'ok'}">
+        ${u.updateAvailable ? t('نسخهٔ تازه هست', 'New release') : t('به‌روز است', 'Up to date')}
+      </span>
+    </div>
+    ${notes.length ? `<div class="upd-notes">${notes.map((n) => `<p>${esc(n)}</p>`).join('')}</div>` : ''}
+    <p class="hint">${t('فایل‌ها از آخرین ریلیز مخزن دانلود و جایگزین می‌شوند؛ کاربران، لینک‌ها و تنظیمات دست‌نخورده می‌مانند.', 'Files are replaced from the newest repository release; users, links and settings stay untouched.')}</p>
+    <div class="actions">
+      <button class="btn sm-btn" data-act="check-update" type="button">${icon('refresh', 'ic ic-sm')}${t('بررسی دوباره', 'CHECK AGAIN')}</button>
+      ${u.updateAvailable ? `<button class="btn sm-btn primary" data-act="apply-update" type="button">${icon('download', 'ic ic-sm')}${t('نصب و ری‌استارت', 'INSTALL & RESTART')}</button>` : ''}
+      <a class="btn sm-btn ghost" href="${esc(u.htmlUrl)}" target="_blank" rel="noopener">${icon('external', 'ic ic-sm')}${t('صفحهٔ ریلیز', 'RELEASE')}</a>
+    </div>`;
+}
+
+function refreshUpdateCard() {
+  const el = $('#card-update');
+  if (el) el.innerHTML = `<p class="kicker">${icon('download')}${t('به‌روزرسانی از مخزن', 'UPDATE FROM REPOSITORY')}</p>${renderUpdateBody()}`;
+}
+
 function renderSettings() {
   const st = S.state;
+  if (!S.update && !S.updateBusy) {
+    S.updateBusy = true;
+    api('/api/update').then((u) => { S.update = u; refreshUpdateCard(); })
+      .catch(() => { S.update = { ok: false, error: 'offline', repo: 'https://github.com/youdidking/NightLine-Railway' }; refreshUpdateCard(); })
+      .finally(() => { S.updateBusy = false; });
+  }
   $('#pane-settings').innerHTML = `
     <div class="cols">
       <div class="card">
@@ -1276,6 +1344,14 @@ function renderSettings() {
         </div>
       </div>
 
+      <div class="card" id="card-update">
+        <p class="kicker">${icon('download')}${t('به‌روزرسانی از مخزن', 'UPDATE FROM REPOSITORY')}</p>
+        ${renderUpdateBody()}
+      </div>
+
+    </div>
+
+    <div class="cols">
       <div class="card">
         <p class="kicker">${icon('shield')}${t('کمک به عبور از DPI', 'DPI ASSIST')}</p>
         <label class="chk"><input type="checkbox" id="s-fragment" ${st.settings.fragment !== false ? 'checked' : ''}>
@@ -1295,13 +1371,13 @@ function renderSettings() {
           <a class="repo-chip" href="https://github.com/youdidking/NightLine-Railway" target="_blank" rel="noopener">
             <svg class="ic ic-sm ic-brand"><use href="#i-github"/></svg>youdidking/NightLine-Railway
           </a>
-          <a class="repo-chip" href="https://t.me/arblant" target="_blank" rel="noopener">
-            <svg class="ic ic-sm ic-brand"><use href="#i-telegram"/></svg>Railynx · @arblant
-          </a>
         </div>
         <p class="hint">${t('نسخهٔ نصب‌شده: ' + st.app.version + ' · پنل رایگان است و فروش آن ممنوع.', 'Installed version: ' + st.app.version + ' · free panel, never for sale.')}</p>
       </div>
 
+    </div>
+
+    <div class="cols">
       <div class="card">
         <p class="kicker">${icon('cpu')}${t('هسته‌ها', 'CORES')}</p>
         <div class="stack-sm">
@@ -1327,9 +1403,6 @@ function renderSettings() {
           <button class="btn sm-btn" data-act="change-pass" type="button">${icon('key', 'ic ic-sm')}${t('تغییر', 'UPDATE')}</button>
         </div>
       </div>
-    </div>
-
-    <div class="cols" style="margin-top:14px">
       <div class="card">
         <p class="kicker">${icon('download')}${t('پشتیبان‌گیری', 'BACKUP & RESTORE')}</p>
         <p class="labor">${t('تمام کاربران، اینباندها و کلیدها در یک فایل JSON هستند. قبل از هر ارتقا یک نسخه بگیرید.', 'Users, inbounds and keys live in one JSON file. Take a copy before every upgrade.')}</p>
@@ -1352,7 +1425,9 @@ function renderSettings() {
         <div id="probe-result"></div>
       </div>
 
-      <div class="card card-subtle">
+    </div>
+
+    <div class="card card-subtle">
         <p class="kicker">${icon('railway')}${t('دربارهٔ این نصب', 'ABOUT THIS DEPLOYMENT')}</p>
         <table class="tbl">
           <tbody>
@@ -1654,6 +1729,30 @@ async function onAction(act, arg, el) {
           logLevel: $('#s-loglevel')?.value || 'warning',
         },
       }));
+    case 'check-update': {
+      S.updateBusy = true;
+      try {
+        S.update = await api('/api/update?force=1');
+      } catch (err) {
+        S.update = { ok: false, error: err.message, repo: 'https://github.com/youdidking/NightLine-Railway' };
+      } finally {
+        S.updateBusy = false;
+      }
+      refreshUpdateCard();
+      return;
+    }
+    case 'apply-update': {
+      if (!window.confirm(tt('فایل‌های پنل از آخرین ریلیز جایگزین می‌شوند و پنل ری‌استارت می‌شود. ادامه؟', 'Panel files will be replaced from the newest release and the panel restarts. Continue?'))) return;
+      toast(tt('در حال دانلود و نصب…', 'Downloading and installing…'));
+      try {
+        const r = await api('/api/update', { method: 'POST' });
+        toast(`${tt('نصب شد', 'installed')} · v${r.version}`);
+        setTimeout(() => window.location.reload(), 4000);
+      } catch (err) {
+        toast(err.message, 'warn');
+      }
+      return;
+    }
     case 'save-fragment':
       return withState(() => api('/api/settings', {
         method: 'POST',

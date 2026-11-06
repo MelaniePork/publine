@@ -45,7 +45,12 @@ export function connectionFor(doc, inbound, user) {
     sni: params.sni || (inbound.security === 'reality' ? String(params.dest || '').split(':')[0] : target.host),
     serviceName: inbound.edge === 'http' ? edgeServiceName(inbound) : params.serviceName || '',
     flow: params.flow || '',
-    alpn: inbound.protocol === 'hysteria2' || inbound.protocol === 'tuic' ? 'h3' : 'h2,http/1.1',
+    // WebSocket / HTTPUpgrade cannot ride HTTP/2: offering h2 in the ALPN list
+    // makes the Railway edge settle on h2 and the upgrade is refused, which is
+    // exactly why every domain-based link used to fail with no ping.
+    alpn: inbound.protocol === 'hysteria2' || inbound.protocol === 'tuic'
+      ? 'h3'
+      : ['ws', 'httpupgrade'].includes(inbound.transport) ? 'http/1.1' : 'h2,http/1.1',
     fingerprint: params.fingerprint || 'chrome',
     extra: params,
   };

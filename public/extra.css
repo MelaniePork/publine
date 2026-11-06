@@ -372,3 +372,160 @@ html[dir="rtl"] .tgl input:checked + .track::after{transform:translateX(-18px)}
 .ping.bad{border-style:dashed;opacity:.65}
 .s-cell .nw{white-space:nowrap}
 .repo-chip svg,.foot-link svg{flex:0 0 auto}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   1.0.2 · layout & motion pass
+   One rhythm for every pane, no card touching its neighbour, and a single
+   easing curve for all transitions instead of a dozen ad-hoc durations.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root{
+  --gap:16px;
+  --ease:cubic-bezier(.22,.61,.36,1);
+  --dur:190ms;
+  --radius:0px;
+}
+
+/* vertical rhythm ------------------------------------------------------- */
+.tab-pane{margin-top:var(--gap)}
+.tab-pane > .cols,
+.tab-pane > .cols-even,
+.tab-pane > .stack,
+.tab-pane > .grid-2{margin-top:0}
+
+.cols,.cols-even{display:grid;gap:var(--gap);align-items:start}
+.cols{grid-template-columns:minmax(0,1.08fr) minmax(0,.92fr)}
+.cols-even{grid-template-columns:repeat(2,minmax(0,1fr))}
+.stack{display:grid;gap:var(--gap)}
+.stack-sm{display:grid;gap:10px}
+.grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--gap)}
+.cols > .card,.cols-even > .card,.cols > .stack,.cols-even > .stack{margin:0}
+
+/* a card never eats its neighbour's space ------------------------------ */
+.card{padding:18px 20px;min-width:0;overflow-wrap:anywhere}
+.card + .card{margin-top:0}
+.card > .kicker,.card > .lede{margin-bottom:12px}
+.card > .kicker{margin-top:0}
+.card > .dashed{margin:14px 0}
+.card > .actions{margin-top:16px;padding-top:0}
+.card > .actions:first-child{margin-top:0}
+.card > .hint:last-child{margin-bottom:0}
+.card > p:last-child,.card > ul:last-child,.card > ol:last-child{margin-bottom:0}
+
+/* section label (the newspaper kicker) */
+.kicker{display:flex;align-items:center;gap:8px;line-height:1.5;margin:0 0 12px}
+
+/* forms --------------------------------------------------------------- */
+.field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 18px}
+.field-grid > div{min-width:0}
+.fld-label{display:block;margin-bottom:6px;line-height:1.4}
+input[type="text"],input[type="number"],input[type="password"],select,textarea{
+  width:100%;min-height:38px;padding:8px 10px;line-height:1.4;
+  transition:border-color var(--dur) var(--ease),box-shadow var(--dur) var(--ease),background-color var(--dur) var(--ease);
+}
+textarea{min-height:88px}
+input:focus-visible,select:focus-visible,textarea:focus-visible{outline:none;box-shadow:inset 0 0 0 1.5px var(--ink)}
+label.chk{display:flex;align-items:center;gap:9px;min-height:30px;line-height:1.5}
+label.chk input[type="checkbox"]{width:16px;height:16px;min-height:0;flex:0 0 auto;accent-color:var(--ink)}
+
+/* buttons ------------------------------------------------------------- */
+.btn,.mini,.tab-btn{transition:background-color var(--dur) var(--ease),color var(--dur) var(--ease),
+  border-color var(--dur) var(--ease),transform var(--dur) var(--ease),box-shadow var(--dur) var(--ease)}
+.btn{min-height:36px;padding:7px 13px;line-height:1.35;white-space:normal;text-align:center}
+.btn:active,.mini:active,.tab-btn:active{transform:translateY(1px)}
+.btn:focus-visible,.mini:focus-visible,.tab-btn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px;align-items:center}
+
+/* tables -------------------------------------------------------------- */
+.tbl{border-collapse:separate;border-spacing:0;width:100%}
+.tbl th,.tbl td{padding:9px 10px;line-height:1.5;vertical-align:middle}
+.tbl tbody tr + tr td{border-top:1px dotted var(--ink-faint)}
+
+/* lists used inside cards --------------------------------------------- */
+.ticks{display:grid;gap:7px;margin:0;padding:0;list-style:none}
+.ticks li{line-height:1.75;padding-inline-start:16px;position:relative}
+.ticks li::before{content:"";position:absolute;inset-inline-start:0;top:.62em;width:6px;height:6px;background:var(--ink)}
+
+/* the tab strip: even cells, no cramping ------------------------------- */
+.tabs{display:flex;flex-wrap:wrap;gap:6px;margin-top:var(--gap)}
+.tab-btn{display:inline-flex;align-items:center;gap:7px;padding:9px 13px;min-height:38px;line-height:1.3}
+
+/* motion -------------------------------------------------------------- */
+@keyframes nl-rise{from{opacity:0;transform:translate3d(0,8px,0)}to{opacity:1;transform:translate3d(0,0,0)}}
+@keyframes nl-scale{from{opacity:0;transform:scale(.985)}to{opacity:1;transform:scale(1)}}
+@keyframes nl-toast{from{opacity:0;transform:translate3d(-50%,10px,0)}to{opacity:1;transform:translate3d(-50%,0,0)}}
+
+.tab-pane:not([hidden]){animation:nl-rise 240ms var(--ease) both}
+.tab-pane:not([hidden]) > .cols > .card,
+.tab-pane:not([hidden]) > .cols-even > .card,
+.tab-pane:not([hidden]) > .stack > .card,
+.tab-pane:not([hidden]) > .card{animation:nl-scale 260ms var(--ease) both}
+.tab-pane:not([hidden]) > .cols > .card:nth-child(2),
+.tab-pane:not([hidden]) > .cols-even > .card:nth-child(2),
+.tab-pane:not([hidden]) > .stack > .card:nth-child(2){animation-delay:40ms}
+.tab-pane:not([hidden]) > .stack > .card:nth-child(3){animation-delay:80ms}
+.tab-pane:not([hidden]) > .stack > .card:nth-child(4){animation-delay:120ms}
+
+.toast:not([hidden]){animation:nl-toast 220ms var(--ease) both}
+.modal-card,.dialog{animation:nl-scale 200ms var(--ease) both}
+.btn:hover,.mini:hover{transform:translateY(-1px)}
+.tbl tbody tr{transition:background-color var(--dur) var(--ease)}
+.tbl tbody tr:hover{background:var(--paper-2)}
+.card{transition:box-shadow var(--dur) var(--ease),border-color var(--dur) var(--ease)}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;
+    transition-duration:.001ms!important;transform:none!important}
+}
+
+/* narrow screens: one column, tighter padding, nothing clipped -------- */
+@media (max-width:880px){
+  .cols,.cols-even,.grid-2,.field-grid{grid-template-columns:minmax(0,1fr)}
+  .card{padding:15px 16px}
+  .tab-btn{flex:1 1 auto;justify-content:center}
+}
+
+/* update card --------------------------------------------------------- */
+.upd-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.upd-ver{font-size:13px;padding:2px 8px;border:1.2px solid var(--ink)}
+.upd-ver.new{border-style:solid;font-weight:700}
+.upd-arrow{opacity:.5}
+.upd-state{font-size:11px;letter-spacing:.06em;text-transform:uppercase;opacity:.8}
+.upd-state.new{opacity:1;font-weight:700}
+.upd-notes{border-inline-start:2px solid var(--ink-faint);padding-inline-start:11px;margin:6px 0 12px;
+  font-size:12.5px;line-height:1.7;max-height:150px;overflow:auto}
+.upd-notes p{margin:0 0 3px}
+#card-update .actions{margin-top:12px}
+
+/* long log / event lines: wrap inside the card instead of sliding off the edge
+   (`.node-title` is a flex row, so `text-overflow:ellipsis` never applied and
+   long messages used to spill out of the box) */
+.node-list{min-width:0}
+.node-row{align-items:flex-start;flex-wrap:wrap;row-gap:4px;padding:8px 10px}
+.node-title{
+  flex:1 1 60%;min-width:0;flex-wrap:wrap;align-items:flex-start;
+  white-space:normal;overflow-wrap:anywhere;text-overflow:clip;line-height:1.5;
+  unicode-bidi:isolate;text-align:start;
+}
+.node-title .badge{flex:0 0 auto}
+.node-row > .mono{flex:0 0 auto;margin-inline-start:auto;align-self:flex-start}
+
+/* any long machine string (paths, error text, links) must break inside its box */
+.node-row > .mono,.note-inline,.hint.mono,.console,.code-line,.lk-uri,.ep-val{
+  white-space:normal;overflow-wrap:anywhere;word-break:break-word;max-width:100%;
+}
+.note-inline{unicode-bidi:isolate}
+
+/* chips never shrink or split a word */
+.chips{gap:6px}
+.chip{flex:0 0 auto;white-space:nowrap;line-height:1.7}
+.proto-card{padding:15px 16px;gap:9px;min-width:0}
+.proto-name{overflow-wrap:anywhere}
+
+/* rows made of two cards: the grid children carry no extra margins */
+.stack > .cols,.stack > .cols-even,.stack > .card,.stack > .grid-2{margin-top:0}
+.stack > .card{padding:18px 20px}
+
+/* the deployment-facts table should read like a list, not stretch */
+#pane-settings .card-subtle .tbl th,
+#pane-settings .card-subtle .tbl td{padding:7px 10px;font-size:12px}
+#pane-settings .card-subtle .tbl th{width:38%;text-align:start;opacity:.75;font-weight:400}

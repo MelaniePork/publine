@@ -222,7 +222,7 @@ function singboxOutbound(link, user, opts = {}) {
       server_name: c.sni,
       insecure: insecure || c.security === 'tls-self',
       utls: { enabled: true, fingerprint: c.fingerprint },
-      ...(c.security === 'tls-edge' ? { alpn: ['h2', 'http/1.1'] } : {}),
+      ...(c.security === 'tls-edge' ? { alpn: String(c.alpn || 'http/1.1').split(',') } : {}),
       ...tlsFrag(),
     };
   };
@@ -376,7 +376,7 @@ export function clashYaml(doc, user) {
       );
     } else if (c.security !== 'none') {
       common.push('tls: true', 'servername: ' + yamlStr(c.sni), 'skip-cert-verify: true');
-      if (c.security === 'tls-edge') common.push('alpn:', '  - h2', '  - http/1.1');
+      if (c.security === 'tls-edge') common.push('alpn:', ...String(c.alpn || 'http/1.1').split(',').map((a) => `  - ${a.trim()}`));
     }
     if (c.transport === 'ws') {
       common.push('network: ws', 'ws-opts:', `  path: ${yamlStr(c.path)}`, '  headers:', `    Host: ${yamlStr(c.hostHeader)}`);

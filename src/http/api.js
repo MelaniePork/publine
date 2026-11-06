@@ -9,6 +9,7 @@ import net from 'node:net';
 import zlib from 'node:zlib';
 import { analyse, applyProfile } from '../iran.js';
 import { stripAnsi } from '../text.js';
+import { checkUpdate, applyUpdate } from '../update.js';
 import { scanner, DEFAULTS as RAILYNX_DEFAULTS, parseVlessLink } from '../railynx.js';
 import { readFileSync } from 'node:fs';
 import { APP, RAILWAY, IS_RAILWAY, DATA_DIR, PORT, MUX_PORT, BIN, NODE_ENV, LIMITS } from '../env.js';
@@ -723,6 +724,24 @@ export async function handleApi(ctx) {
     load();
     await runtime.apply({ reason: 'restore' });
     return send(res, 200, { ok: true, state: buildState(runtime, req) });
+  }
+
+  if (route === 'GET /api/update') {
+    const info = await checkUpdate({ force: url.searchParams.get('force') === '1' });
+    return send(res, 200, info);
+  }
+
+  if (route === 'POST /api/update') {
+    const logs = [];
+    try {
+      const report = await applyUpdate({ restart: false, onLog: (line) => logs.push(line) });
+      // restart the process once the response is on the wire: Railway (and the
+      // local runner) bring the panel straight back up on the new code
+      setTimeout(() => process.exit(0), 700);
+      return send(res, 200, { ...report, logs });
+    } catch (err) {
+      return send(res, 500, { ok: false, error: String(err && err.message ? err.message : err), logs });
+    }
   }
 
   if (route === 'POST /api/links/ping') {

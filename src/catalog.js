@@ -10,6 +10,10 @@
  *   edge: 'tcp'  → reaches clients through the single Railway TCP proxy port.
  *                  The panel multiplexes TLS-SNI / SOCKS5 / HTTP / MTProto on
  *                  that one port (see src/proxy/mux.js).
+ *   tier: 'verified' → confirmed end-to-end through a real Railway TCP proxy; on
+ *                  by default and the only recipes the panel links by default.
+ *   tier: 'lab'  → kept for custom domains / experiments; never enabled on a
+ *                  fresh install because it was not reproducible on the edge.
  *   udp: true    → needs public UDP ingress, which Railway does not provide.
  *                  The recipe stays available (config + links are generated)
  *                  but the panel marks it unusable on this host.
@@ -57,6 +61,7 @@ export const PRESETS = [
   /* ── Xray · HTTP edge (Railway TLS termination) ─────────────────────── */
   {
     id: 'vless-ws',
+    tier: 'lab',
     core: 'xray',
     protocol: 'vless',
     transport: 'ws',
@@ -74,6 +79,7 @@ export const PRESETS = [
   },
   {
     id: 'vless-httpupgrade',
+    tier: 'lab',
     core: 'xray',
     protocol: 'vless',
     transport: 'httpupgrade',
@@ -90,6 +96,7 @@ export const PRESETS = [
   },
   {
     id: 'vless-xhttp',
+    tier: 'lab',
     core: 'xray',
     protocol: 'vless',
     transport: 'xhttp',
@@ -106,6 +113,7 @@ export const PRESETS = [
   },
   {
     id: 'vless-grpc',
+    tier: 'lab',
     core: 'xray',
     protocol: 'vless',
     transport: 'grpc',
@@ -123,6 +131,7 @@ export const PRESETS = [
   },
   {
     id: 'vmess-ws',
+    tier: 'lab',
     core: 'xray',
     protocol: 'vmess',
     transport: 'ws',
@@ -137,6 +146,7 @@ export const PRESETS = [
   },
   {
     id: 'vmess-grpc',
+    tier: 'lab',
     core: 'xray',
     protocol: 'vmess',
     transport: 'grpc',
@@ -149,6 +159,7 @@ export const PRESETS = [
   },
   {
     id: 'trojan-ws',
+    tier: 'lab',
     core: 'xray',
     protocol: 'trojan',
     transport: 'ws',
@@ -161,6 +172,7 @@ export const PRESETS = [
   },
   {
     id: 'trojan-grpc',
+    tier: 'lab',
     core: 'xray',
     protocol: 'trojan',
     transport: 'grpc',
@@ -175,6 +187,7 @@ export const PRESETS = [
   /* ── Xray · TCP proxy edge ──────────────────────────────────────────── */
   {
     id: 'vless-reality',
+    tier: 'verified',
     core: 'xray',
     protocol: 'vless',
     transport: 'tcp',
@@ -192,6 +205,7 @@ export const PRESETS = [
   },
   {
     id: 'vless-tcp',
+    tier: 'lab',
     core: 'xray',
     protocol: 'vless',
     transport: 'tcp',
@@ -204,6 +218,7 @@ export const PRESETS = [
   },
   {
     id: 'vmess-tcp',
+    tier: 'lab',
     core: 'xray',
     protocol: 'vmess',
     transport: 'tcp',
@@ -216,6 +231,7 @@ export const PRESETS = [
   },
   {
     id: 'trojan-tcp-tls',
+    tier: 'lab',
     core: 'xray',
     protocol: 'trojan',
     transport: 'tcp',
@@ -231,6 +247,7 @@ export const PRESETS = [
   },
   {
     id: 'ss-2022',
+    tier: 'verified',
     core: 'xray',
     protocol: 'shadowsocks',
     transport: 'tcp',
@@ -243,6 +260,7 @@ export const PRESETS = [
   },
   {
     id: 'ss-legacy',
+    tier: 'lab',
     core: 'xray',
     protocol: 'shadowsocks',
     transport: 'tcp',
@@ -257,6 +275,7 @@ export const PRESETS = [
   /* ── sing-box · HTTP edge ───────────────────────────────────────────── */
   {
     id: 'sb-vless-ws',
+    tier: 'lab',
     core: 'singbox',
     protocol: 'vless',
     transport: 'ws',
@@ -269,6 +288,7 @@ export const PRESETS = [
   },
   {
     id: 'sb-trojan-ws',
+    tier: 'lab',
     core: 'singbox',
     protocol: 'trojan',
     transport: 'ws',
@@ -281,6 +301,7 @@ export const PRESETS = [
   },
   {
     id: 'sb-vmess-ws',
+    tier: 'lab',
     core: 'singbox',
     protocol: 'vmess',
     transport: 'ws',
@@ -295,6 +316,7 @@ export const PRESETS = [
   /* ── sing-box · TCP proxy edge ──────────────────────────────────────── */
   {
     id: 'anytls',
+    tier: 'verified',
     core: 'singbox',
     protocol: 'anytls',
     transport: 'tcp',
@@ -313,6 +335,7 @@ export const PRESETS = [
   },
   {
     id: 'shadowtls',
+    tier: 'lab',
     core: 'singbox',
     protocol: 'shadowtls',
     transport: 'tcp',
@@ -325,6 +348,7 @@ export const PRESETS = [
   },
   {
     id: 'sb-ss-2022',
+    tier: 'lab',
     core: 'singbox',
     protocol: 'shadowsocks',
     transport: 'tcp',
@@ -337,6 +361,7 @@ export const PRESETS = [
   },
   {
     id: 'sb-vless-reality',
+    tier: 'lab',
     core: 'singbox',
     protocol: 'vless',
     transport: 'tcp',
@@ -351,6 +376,7 @@ export const PRESETS = [
   /* ── UDP-only (config + links are produced, Railway cannot expose them) ─ */
   {
     id: 'hysteria2',
+    tier: 'lab',
     core: 'singbox',
     protocol: 'hysteria2',
     transport: 'quic',
@@ -367,6 +393,7 @@ export const PRESETS = [
   },
   {
     id: 'tuic',
+    tier: 'lab',
     core: 'singbox',
     protocol: 'tuic',
     transport: 'quic',
@@ -380,6 +407,7 @@ export const PRESETS = [
   },
   {
     id: 'wireguard',
+    tier: 'lab',
     core: 'singbox',
     protocol: 'wireguard',
     transport: 'udp',
@@ -416,10 +444,11 @@ function makeInbound(preset, overrides = {}) {
 /** Default inbounds seeded on a fresh install. */
 export function DEFAULT_INBOUNDS() {
   const list = [
-    makeInbound(presetById('vless-ws'), { label: 'VLESS · WS', enabled: true, port: 11001 }),
-    makeInbound(presetById('vless-xhttp'), { label: 'VLESS · XHTTP', enabled: true, port: 11003 }),
+    makeInbound(presetById('vless-ws'), { label: 'VLESS · WS', enabled: false, port: 11001 }),
+    makeInbound(presetById('vless-xhttp'), { label: 'VLESS · XHTTP', enabled: false, port: 11003 }),
     makeInbound(presetById('vless-grpc'), { label: 'VLESS · gRPC', enabled: false, port: 11004 }),
-    makeInbound(presetById('trojan-ws'), { label: 'Trojan · WS', enabled: true, port: 11005 }),
+    makeInbound(presetById('trojan-ws'), { label: 'Trojan · WS', enabled: false, port: 11005 }),
+    makeInbound(presetById('trojan-tcp-tls'), { label: 'Trojan · TLS', enabled: false, port: 11006 }),
     makeInbound(presetById('vless-reality'), { label: 'VLESS · REALITY', enabled: true, port: 11010 }),
     makeInbound(presetById('ss-2022'), { label: 'Shadowsocks 2022', enabled: true, port: 11011 }),
     makeInbound(presetById('anytls'), { label: 'AnyTLS', enabled: true, port: 11012 }),
@@ -439,6 +468,7 @@ export function describeInbound(inbound) {
     ...inbound,
     params: { ...preset.defaults, ...(inbound.params || {}) },
     reachable: !preset.udp,
+    tier: preset.tier || 'lab',
     reason: preset.udp
       ? { fa: 'ریلوی پلن رایگان UDP عمومی نمی‌دهد', en: 'Railway free plan exposes no public UDP' }
       : null,
