@@ -67,7 +67,12 @@ function serveStatic(req, res, urlPath) {
   const headers = {
     'Content-Type': entry.type,
     'Content-Length': body.length,
-    'Cache-Control': entry.ext === '.html' ? 'no-cache' : 'public, max-age=31536000, immutable',
+    // Only truly static binaries (images, fonts) may be cached for good. Code and
+    // markup must revalidate every load, otherwise a browser keeps running an old
+    // app.js after an in-panel update and half the UI looks "missing".
+    'Cache-Control': ['.html', '.js', '.mjs', '.css', '.svg', '.json', '.webmanifest'].includes(entry.ext)
+      ? 'no-cache'
+      : 'public, max-age=604800',
     ETag: `"${entry.mtime.toString(36)}-${entry.raw.length.toString(36)}"`,
     Vary: 'Accept-Encoding',
   };

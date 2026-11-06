@@ -14,6 +14,7 @@ const S = {
   refreshTimer: null,
   update: null,      // last /api/update answer
   updateBusy: false,
+  updateTimer: null,
   busy: false,
 };
 
@@ -548,6 +549,7 @@ function renderDashboard() {
     </div>`;
 
   $('#pane-dashboard').innerHTML = `
+    ${updateBannerHtml()}
     <div class="kpi-grid">
       ${kpi(t('کاربران فعال', 'ACTIVE USERS'), `${activeUsers}/${st.users.length}`, `${st.limits.maxUsers} max`, 'users')}
       ${kpi(t('اینباند فعال', 'LIVE INBOUNDS'), String(st.inbounds.filter((i) => i.enabled).length), `${st.inbounds.length} installed`, 'layers')}
@@ -1309,9 +1311,88 @@ function renderUpdateBody() {
     </div>`;
 }
 
+/**
+ * The update strip on the dashboard. It is deliberately loud only when a newer
+ * release exists: the card keeps a "check" button otherwise, so the feature is
+ * discoverable without shouting.
+ */
+function updateBannerHtml() {
+  const u = S.update;
+  const cur = (S.state && S.state.app && S.state.app.version) || '';
+  const repo = 'https://github.com/youdidking/NightLine-Railway';
+
+  if (!u) {
+    return `
+      <div class="upd-banner" id="update-banner">
+        <span class="upd-badge">${icon('download', 'ic ic-sm')}${t('به‌روزرسانی', 'UPDATE')}</span>
+        <span class="upd-text">${t('نسخهٔ نصب‌شده', 'Installed')} <b class="mono">v${esc(cur)}</b>
+          ${S.updateBusy ? t('· در حال بررسی…', '· checking…') : t('· آخرین ریلیز بررسی نشده است', '· newest release not checked yet')}</span>
+        <div class="upd-actions">
+          <button class="btn sm-btn" data-act="check-update" type="button">${icon('refresh', 'ic ic-sm')}${t('بررسی', 'CHECK')}</button>
+        </div>
+      </div>`;
+  }
+  if (!u.ok) {
+    return `
+      <div class="upd-banner" id="update-banner">
+        <span class="upd-badge">${icon('download', 'ic ic-sm')}${t('به‌روزرسانی', 'UPDATE')}</span>
+        <span class="upd-text">${t('نسخهٔ نصب‌شده', 'Installed')} <b class="mono">v${esc(cur)}</b> ·
+          ${t('گیت‌هاب در دسترس نبود', 'GitHub unreachable')}</span>
+        <div class="upd-actions">
+          <button class="btn sm-btn" data-act="check-update" type="button">${icon('refresh', 'ic ic-sm')}${t('تلاش دوباره', 'RETRY')}</button>
+          <a class="btn sm-btn ghost" href="${repo}" target="_blank" rel="noopener">${icon('github', 'ic ic-sm ic-brand')}${t('مخزن', 'REPO')}</a>
+        </div>
+      </div>`;
+  }
+  if (!u.updateAvailable) {
+    return `
+      <div class="upd-banner" id="update-banner">
+        <span class="upd-badge ok">${icon('check', 'ic ic-sm')}${t('به‌روز', 'UP TO DATE')}</span>
+        <span class="upd-text">${t('نسخهٔ نصب‌شده', 'Installed')} <b class="mono">v${esc(cur)}</b> ·
+          ${t('آخرین ریلیز', 'newest release')} <b class="mono">${u.latest ? `v${esc(u.latest)}` : '—'}</b></span>
+        <div class="upd-actions">
+          <button class="btn sm-btn ghost" data-act="check-update" type="button">${icon('refresh', 'ic ic-sm')}${t('بررسی دوباره', 'RECHECK')}</button>
+          <a class="btn sm-btn ghost" href="${esc(u.htmlUrl)}" target="_blank" rel="noopener">${icon('external', 'ic ic-sm')}${t('ریلیزها', 'RELEASES')}</a>
+        </div>
+      </div>`;
+  }
+  return `
+    <div class="upd-banner new" id="update-banner">
+      <span class="upd-badge new"><span class="upd-dot"></span>${t('نسخهٔ تازه', 'NEW RELEASE')}</span>
+      <span class="upd-text">
+        ${t('نسخهٔ', 'Version')} <b class="mono">v${esc(u.latest)}</b>
+        ${t('منتشر شد — نسخهٔ نصب‌شده', 'is available — installed')} <b class="mono">v${esc(cur)}</b>
+      </span>
+      <div class="upd-actions">
+        <button class="btn sm-btn primary" data-act="apply-update" type="button">${icon('download', 'ic ic-sm')}${t('همین‌جا به‌روزرسانی کن', 'UPDATE IN PLACE')}</button>
+        <a class="btn sm-btn ghost" href="${esc(u.htmlUrl)}" target="_blank" rel="noopener">${icon('external', 'ic ic-sm')}${t('تغییرات', 'CHANGELOG')}</a>
+      </div>
+    </div>`;
+}
+
+/** Quiet background check: runs once per session and every 30 minutes. */
+function checkUpdateQuiet() {
+  if (S.updateBusy) return;
+  S.updateBusy = true;
+  api('/api/update')
+    .then((u) => { S.update = u; })
+    .catch(() => { /* offline: the banner simply keeps its check button */ })
+    .finally(() => {
+      S.updateBusy = false;
+      const onDash = S.state && S.tab === 'dashboard';
+      if (onDash) {
+        const el = $('#update-banner');
+        if (el) el.outerHTML = updateBannerHtml();
+      }
+      refreshUpdateCard();
+    });
+}
+
 function refreshUpdateCard() {
-  const el = $('#card-update');
-  if (el) el.innerHTML = `<p class="kicker">${icon('download')}${t('به‌روزرسانی از مخزن', 'UPDATE FROM REPOSITORY')}</p>${renderUpdateBody()}`;
+  const card = $('#card-update');
+  if (card) card.innerHTML = `<p class="kicker">${icon('download')}${t('به‌روزرسانی از مخزن', 'UPDATE FROM REPOSITORY')}</p>${renderUpdateBody()}`;
+  const banner = $('#update-banner');
+  if (banner) banner.outerHTML = updateBannerHtml();
 }
 
 function renderSettings() {
@@ -1344,14 +1425,6 @@ function renderSettings() {
         </div>
       </div>
 
-      <div class="card" id="card-update">
-        <p class="kicker">${icon('download')}${t('به‌روزرسانی از مخزن', 'UPDATE FROM REPOSITORY')}</p>
-        ${renderUpdateBody()}
-      </div>
-
-    </div>
-
-    <div class="cols">
       <div class="card">
         <p class="kicker">${icon('shield')}${t('کمک به عبور از DPI', 'DPI ASSIST')}</p>
         <label class="chk"><input type="checkbox" id="s-fragment" ${st.settings.fragment !== false ? 'checked' : ''}>
@@ -1364,7 +1437,9 @@ function renderSettings() {
           <button class="btn sm-btn" data-act="save-fragment" type="button">${icon('save', 'ic ic-sm')}${t('ذخیره', 'SAVE')}</button>
         </div>
       </div>
+    </div>
 
+    <div class="cols">
       <div class="card">
         <p class="kicker">${icon('github', 'ic ic-brand')}${t('درباره و مخزن پروژه', 'ABOUT & REPOSITORY')}</p>
         <div class="stack-sm">
@@ -1375,6 +1450,27 @@ function renderSettings() {
         <p class="hint">${t('نسخهٔ نصب‌شده: ' + st.app.version + ' · پنل رایگان است و فروش آن ممنوع.', 'Installed version: ' + st.app.version + ' · free panel, never for sale.')}</p>
       </div>
 
+      <div class="card">
+        <p class="kicker">${icon('download')}${t('پشتیبان‌گیری', 'BACKUP & RESTORE')}</p>
+        <p class="labor">${t('تمام کاربران، اینباندها و کلیدها در یک فایل JSON هستند. قبل از هر ارتقا یک نسخه بگیرید.', 'Users, inbounds and keys live in one JSON file. Take a copy before every upgrade.')}</p>
+        <div class="actions">
+          <a class="btn sm-btn" href="/api/backup" download>${icon('download', 'ic ic-sm')}${t('دریافت پشتیبان', 'DOWNLOAD BACKUP')}</a>
+          <label class="btn sm-btn ghost" style="cursor:pointer">
+            ${icon('upload', 'ic ic-sm')}${t('بازیابی', 'RESTORE')}
+            <input type="file" id="restore-file" accept="application/json" hidden>
+          </label>
+        </div>
+        <div class="dashed"></div>
+        <p class="kicker">${icon('search')}${t('آزمون اتصال', 'CONNECTIVITY PROBE')}</p>
+        <div class="field-grid">
+          <div><label class="fld-label">${t('میزبان', 'HOST')}</label><input type="text" id="s-probe-host" placeholder="${esc(st.facts.tcpHost || 'example.com')}"></div>
+          <div><label class="fld-label">PORT</label><input type="number" id="s-probe-port" value="${st.facts.tcpPort || 443}"></div>
+        </div>
+        <div class="actions">
+          <button class="btn sm-btn ghost" data-act="probe" type="button">${icon('radar', 'ic ic-sm')}${t('آزمایش', 'TEST')}</button>
+        </div>
+        <div id="probe-result"></div>
+      </div>
     </div>
 
     <div class="cols">
@@ -1403,53 +1499,29 @@ function renderSettings() {
           <button class="btn sm-btn" data-act="change-pass" type="button">${icon('key', 'ic ic-sm')}${t('تغییر', 'UPDATE')}</button>
         </div>
       </div>
-      <div class="card">
-        <p class="kicker">${icon('download')}${t('پشتیبان‌گیری', 'BACKUP & RESTORE')}</p>
-        <p class="labor">${t('تمام کاربران، اینباندها و کلیدها در یک فایل JSON هستند. قبل از هر ارتقا یک نسخه بگیرید.', 'Users, inbounds and keys live in one JSON file. Take a copy before every upgrade.')}</p>
-        <div class="actions">
-          <a class="btn sm-btn" href="/api/backup" download>${icon('download', 'ic ic-sm')}${t('دریافت پشتیبان', 'DOWNLOAD BACKUP')}</a>
-          <label class="btn sm-btn ghost" style="cursor:pointer">
-            ${icon('upload', 'ic ic-sm')}${t('بازیابی', 'RESTORE')}
-            <input type="file" id="restore-file" accept="application/json" hidden>
-          </label>
-        </div>
-        <div class="dashed"></div>
-        <p class="kicker">${icon('search')}${t('آزمون اتصال', 'CONNECTIVITY PROBE')}</p>
-        <div class="field-grid">
-          <div><label class="fld-label">${t('میزبان', 'HOST')}</label><input type="text" id="s-probe-host" placeholder="${esc(st.facts.tcpHost || 'example.com')}"></div>
-          <div><label class="fld-label">PORT</label><input type="number" id="s-probe-port" value="${st.facts.tcpPort || 443}"></div>
-        </div>
-        <div class="actions">
-          <button class="btn sm-btn ghost" data-act="probe" type="button">${icon('radar', 'ic ic-sm')}${t('آزمایش', 'TEST')}</button>
-        </div>
-        <div id="probe-result"></div>
-      </div>
-
-    </div>
 
     <div class="card card-subtle">
-        <p class="kicker">${icon('railway')}${t('دربارهٔ این نصب', 'ABOUT THIS DEPLOYMENT')}</p>
-        <table class="tbl">
-          <tbody>
-            <tr><th>${t('پروژه', 'PROJECT')}</th><td class="mono">${esc(st.facts.projectName || '—')}</td></tr>
-            <tr><th>${t('سرویس', 'SERVICE')}</th><td class="mono">${esc(st.facts.serviceName || '—')}</td></tr>
-            <tr><th>Region</th><td class="mono">${esc(st.facts.region || 'auto')}</td></tr>
-            <tr><th>${t('مسیر داده', 'DATA DIR')}</th><td class="mono" style="overflow-wrap:anywhere">${esc(st.facts.dataDir)}</td></tr>
-            <tr><th>Volume</th><td class="mono" style="overflow-wrap:anywhere">${esc(st.facts.volume || '—')}</td></tr>
-            <tr><th>PORT</th><td class="mono">${st.facts.port}</td></tr>
-            <tr><th>MUX</th><td class="mono">${st.facts.muxPort}</td></tr>
-            <tr><th>Xray</th><td class="mono" style="overflow-wrap:anywhere">${esc(st.facts.bins.xray)}</td></tr>
-            <tr><th>sing-box</th><td class="mono" style="overflow-wrap:anywhere">${esc(st.facts.bins.singbox)}</td></tr>
-            <tr><th>mtg</th><td class="mono" style="overflow-wrap:anywhere">${esc(st.facts.bins.mtg)}</td></tr>
-          </tbody>
-        </table>
-        <div class="actions">
-          <a class="btn sm-btn ghost" href="${esc(st.app.repo)}" target="_blank" rel="noopener">${icon('external', 'ic ic-sm')}${t('مخزن پروژه', 'REPOSITORY')}</a>
-          <a class="btn sm-btn ghost" href="${esc(st.app.telegram)}" target="_blank" rel="noopener">${icon('telegram', 'ic ic-sm')}${t('پشتیبانی', 'SUPPORT')}</a>
-        </div>
-        ${freeStrip()}
+      <p class="kicker">${icon('railway')}${t('دربارهٔ این نصب', 'ABOUT THIS DEPLOYMENT')}</p>
+      <div class="facts-grid">
+        <div class="fact"><span>${t('پروژه', 'PROJECT')}</span><b class="mono">${esc(st.facts.projectName || '—')}</b></div>
+        <div class="fact"><span>${t('سرویس', 'SERVICE')}</span><b class="mono">${esc(st.facts.serviceName || '—')}</b></div>
+        <div class="fact"><span>Region</span><b class="mono">${esc(st.facts.region || 'auto')}</b></div>
+        <div class="fact"><span>${t('مسیر داده', 'DATA DIR')}</span><b class="mono">${esc(st.facts.dataDir)}</b></div>
+        <div class="fact"><span>Volume</span><b class="mono">${esc(st.facts.volume || '—')}</b></div>
+        <div class="fact"><span>PORT</span><b class="mono">${st.facts.port}</b></div>
+        <div class="fact"><span>MUX</span><b class="mono">${st.facts.muxPort}</b></div>
+        <div class="fact"><span>Xray</span><b class="mono">${esc(st.facts.bins.xray)}</b></div>
+        <div class="fact"><span>sing-box</span><b class="mono">${esc(st.facts.bins.singbox)}</b></div>
+        <div class="fact"><span>mtg</span><b class="mono">${esc(st.facts.bins.mtg)}</b></div>
       </div>
-    </div>`;
+      <div class="actions">
+      <a class="btn sm-btn ghost" href="${esc(st.app.repo)}" target="_blank" rel="noopener">${icon('external', 'ic ic-sm')}${t('مخزن پروژه', 'REPOSITORY')}</a>
+      <a class="btn sm-btn ghost" href="${esc(st.app.telegram)}" target="_blank" rel="noopener">${icon('telegram', 'ic ic-sm')}${t('پشتیبانی', 'SUPPORT')}</a>
+      </div>
+    </div>
+    </div>
+
+    ${freeStrip()}`;
 }
 
 /* ── modal ───────────────────────────────────────────────────────────── */
@@ -1739,6 +1811,9 @@ async function onAction(act, arg, el) {
         S.updateBusy = false;
       }
       refreshUpdateCard();
+      toast(S.update && S.update.updateAvailable
+        ? tt('نسخهٔ تازه‌ای منتشر شده است', 'A newer release is available')
+        : tt('پنل به‌روز است', 'The panel is up to date'));
       return;
     }
     case 'apply-update': {
@@ -1884,6 +1959,11 @@ function renderAll() {
   $('#boot').hidden = true;
   $('#auth').hidden = true;
   $('#app').hidden = false;
+  // one silent release check per session, then every half hour
+  if (!S.updateTimer) {
+    checkUpdateQuiet();
+    S.updateTimer = setInterval(checkUpdateQuiet, 30 * 60 * 1000);
+  }
   renderStatusBar();
   renderNav();
   $$('.tab-pane').forEach((pane) => { pane.hidden = pane.dataset.pane !== S.tab; });

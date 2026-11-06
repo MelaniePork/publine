@@ -529,3 +529,63 @@ label.chk input[type="checkbox"]{width:16px;height:16px;min-height:0;flex:0 0 au
 #pane-settings .card-subtle .tbl th,
 #pane-settings .card-subtle .tbl td{padding:7px 10px;font-size:12px}
 #pane-settings .card-subtle .tbl th{width:38%;text-align:start;opacity:.75;font-weight:400}
+
+/* footer must never crush into the strip above it ----------------------- */
+footer.colophon-wrap,footer{margin-top:26px}
+.colophon{
+  border-top:1px dotted var(--ink-faint);padding-top:14px;margin:0;
+  display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;row-gap:10px;
+}
+.colophon > *{flex:0 0 auto}
+.colophon .mono{letter-spacing:.08em}
+@media (max-width:640px){
+  .colophon{gap:10px 12px}
+  .colophon > .mono:first-child{flex:1 1 100%}
+}
+
+/* ── update banner (dashboard) ─────────────────────────────────────────── */
+.upd-banner{
+  display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;
+  border:1.5px solid var(--ink);background:var(--paper);padding:11px 14px;
+  margin-bottom:var(--gap);position:relative;
+  transition:background-color var(--dur) var(--ease),border-color var(--dur) var(--ease);
+}
+.upd-badge{
+  display:inline-flex;align-items:center;gap:7px;flex:0 0 auto;
+  font-family:var(--en-font);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+  border:1.2px solid var(--ink);padding:3px 8px;background:var(--paper-2);
+}
+.upd-badge.ok{border-color:var(--ok);color:var(--ok)}
+.upd-badge.new{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.upd-text{flex:1 1 260px;min-width:0;font-size:12.5px;line-height:1.6}
+.upd-text b{font-weight:700}
+.upd-actions{display:flex;flex-wrap:wrap;gap:8px;flex:0 0 auto;margin-inline-start:auto}
+.upd-dot{width:7px;height:7px;background:currentColor;border-radius:50%;animation:upd-pulse 1.8s var(--ease) infinite}
+@keyframes upd-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.72)}}
+
+/* a pending release gently nudges the whole strip, once every few seconds */
+.upd-banner.new{animation:upd-nudge 6s var(--ease) infinite;box-shadow:0 0 0 2px var(--paper),0 0 0 3.5px var(--ink)}
+@keyframes upd-nudge{
+  0%,88%,100%{transform:translate3d(0,0,0)}
+  90%{transform:translate3d(-3px,0,0)}
+  92%{transform:translate3d(3px,0,0)}
+  94%{transform:translate3d(-2px,0,0)}
+  96%{transform:translate3d(2px,0,0)}
+}
+.upd-banner.new .upd-badge.new{animation:upd-glow 2.4s var(--ease) infinite}
+@keyframes upd-glow{0%,100%{opacity:1}50%{opacity:.72}}
+@media (prefers-reduced-motion:reduce){
+  .upd-banner.new,.upd-dot,.upd-banner.new .upd-badge.new{animation:none!important}
+}
+@media (max-width:640px){
+  .upd-banner{padding:10px 12px}
+  .upd-actions{margin-inline-start:0;width:100%}
+  .upd-actions .btn{flex:1 1 auto;justify-content:center}
+}
+
+/* deployment facts: two compact columns instead of a 10-row table */
+.facts-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--ink-faint);border:1px solid var(--ink-faint)}
+.facts-grid .fact{background:var(--paper);padding:7px 9px;min-width:0;display:flex;flex-direction:column;gap:2px}
+.facts-grid .fact span{font-size:10px;letter-spacing:.09em;text-transform:uppercase;opacity:.6}
+.facts-grid .fact b{font-size:11.5px;font-weight:400;overflow-wrap:anywhere;line-height:1.4}
+@media (max-width:560px){.facts-grid{grid-template-columns:minmax(0,1fr)}}

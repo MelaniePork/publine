@@ -16,7 +16,7 @@ export const APP = {
   tag: 'Railway',
   version: '1.0.2',
   edition: 'RAILWAY',
-  repo: 'https://github.com/youdidking/NightLine',
+  repo: 'https://github.com/youdidking/NightLine-Railway',
   telegram: process.env.NL_TELEGRAM_CONTACT || 'https://t.me/rvivl',
 };
 
