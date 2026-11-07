@@ -120,47 +120,6 @@ export function rulesAssets() {
 }
 
 /**
- * YouTube ad blocking (v1.0.5).
- *
- * A proxy server can only route by hostname — the URL path ("/api/stats/ads")
- * is inside TLS and is never visible, so YouTube's own ad endpoints cannot be
- * matched directly. What *is* left on the wire is two things, and both are used
- * here:
- *
- *  1. The ad/tracking hosts the player still talks to (ads.youtube.com,
- *     s.youtube.com — which carries /api/stats/ads, /pagead and /ptracking — and
- *     the Google ad servers that serve the video-ad VAST/VMAP documents).
- *  2. HTTP/3: YouTube ships the stitched ad stream over QUIC (UDP 443). Rejecting
- *     QUIC for the YouTube hostnames forces the player back to TCP, where ads are
- *     separable and skippable. This is the same rule the current YouTube
- *     ad-block modules ship ("UDP 443 reject") plus the host list — and because
- *     it is scoped to YouTube hostnames, ordinary QUIC traffic elsewhere is
- *     untouched.
- *
- * Video itself is served from googlevideo.com over TCP, so playback stays intact:
- * only the ad channels are cut, nothing on the user's device is configured.
- */
-export const YOUTUBE_AD_HOSTS = [
-  'ads.youtube.com',
-  's.youtube.com',
-  'pagead2.googlesyndication.com',
-  'pubads.g.doubleclick.net',
-  'googleads.g.doubleclick.net',
-  'static.doubleclick.net',
-  'adservice.google.com',
-];
-
-/** YouTube hostnames whose QUIC (HTTP/3) channel carries the ad stream. */
-export const YOUTUBE_QUIC_HOSTS = [
-  'googlevideo.com',
-  'youtube.com',
-  'youtu.be',
-  'ytimg.com',
-  'ggpht.com',
-  'youtubei.googleapis.com',
-];
-
-/**
  * Rules the cores enforce ON THE SERVER (this Railway container):
  * ads / malware / phishing / miners are dropped, QUIC and BitTorrent can be
  * dropped, private ranges never leave the box. No client-side setup needed.
@@ -183,20 +142,6 @@ export function serverXrayRules(settings, assets = rulesAssets()) {
       domain: ['geosite:malware', 'geosite:phishing', 'geosite:cryptominers'],
     });
     rules.push({ type: 'field', outboundTag: 'block', ip: ['geoip:malware', 'geoip:phishing'] });
-  }
-  if (s.blockYoutube) {
-    rules.push({
-      type: 'field',
-      outboundTag: 'block',
-      domain: YOUTUBE_AD_HOSTS.map((h) => `domain:${h}`),
-    });
-    rules.push({
-      type: 'field',
-      outboundTag: 'block',
-      domain: YOUTUBE_QUIC_HOSTS.map((h) => `domain:${h}`),
-      network: 'udp',
-      port: '443',
-    });
   }
   if (s.blockBittorrent) {
     // stops the service being used as a torrent exit node
@@ -228,10 +173,6 @@ export function serverSingboxRules(settings, assets = rulesAssets()) {
     rules.push({ rule_set: ['geosite-malware', 'geosite-phishing'], action: 'reject' });
     rules.push({ rule_set: 'geoip-malware', action: 'reject' });
   }
-  if (s.blockYoutube) {
-    rules.push({ domain_suffix: YOUTUBE_AD_HOSTS, action: 'reject' });
-    rules.push({ domain_suffix: YOUTUBE_QUIC_HOSTS, network: 'udp', port: 443, action: 'reject' });
-  }
   if (s.blockQuic) rules.push({ protocol: 'quic', action: 'reject' });
   if (s.blockBittorrent) rules.push({ protocol: 'bittorrent', action: 'reject' });
   return { ruleSets, rules };
@@ -241,7 +182,6 @@ export const ROUTING_DEFAULTS = {
   enabled: true,
   blockAds: true,
   blockSecurity: true,
-  blockYoutube: true,
   blockQuic: false,
   blockBittorrent: true,
 };
