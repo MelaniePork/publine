@@ -196,7 +196,7 @@ function renderStatusBar() {
 
 const TABS = [
   { id: 'dashboard', icon: 'gauge', fa: 'نمای کلی', en: 'OVERVIEW' },
-  { id: 'easy', icon: 'bolt', fa: 'آسان', en: 'EASY' },
+  { id: 'easy', icon: 'bolt', fa: 'تنظیم آسان', en: 'EASY SETUP' },
   { id: 'railynx', icon: 'radar', fa: 'Railynx', en: 'RAILYNX' },
   { id: 'inbounds', icon: 'layers', fa: 'روش‌ها', en: 'METHODS' },
   { id: 'users', icon: 'users', fa: 'کاربران', en: 'USERS' },
@@ -553,6 +553,7 @@ function renderDashboard() {
     </div>`;
 
   $('#pane-dashboard').innerHTML = `
+    ${hostsAlertHtml()}
     ${updateBannerHtml()}
     <div class="kpi-grid">
       ${kpi(t('کاربران فعال', 'ACTIVE USERS'), `${activeUsers}/${st.users.length}`, `${st.limits.maxUsers} max`, 'users')}
@@ -1316,6 +1317,39 @@ function renderUpdateBody() {
 }
 
 /**
+ * Shown when Railway did not inject the public domain / TCP proxy (a re-created
+ * service or a redeploy without networking). Without these two values every
+ * link the panel builds is dead, so the fix sits right on the dashboard: type
+ * them once, they are stored on the volume and survive restarts.
+ */
+function hostsAlertHtml() {
+  const f = (S.state && S.state.facts) || {};
+  if (f.publicHost && f.tcpReady) return '';
+  return `
+    <div class="hosts-alert" id="hosts-alert">
+      <div class="hosts-alert-head">
+        ${icon('alert', 'ic ic-sm')}
+        <b>${t('دامنه یا پروکسی TCP تنظیم نشده — لینک‌ها کار نمی‌کنند', 'NO DOMAIN OR TCP PROXY — EVERY LINK IS DEAD')}</b>
+      </div>
+      <p class="hint" style="margin:6px 0 10px">${t(
+        'ریلوی این مقادیر را خودکار پر می‌کند؛ اگر سرویس دوباره ساخته شود ممکن است خالی بیایند. یک‌بار اینجا وارد کن تا همین‌جا ذخیره شوند و بعد از هر ری‌استارت بمانند.',
+        'Railway fills these in automatically; a re-created service can lose them. Enter them once here — they are stored on the volume and survive restarts.',
+      )}</p>
+      <div class="field-grid">
+        <div><label class="fld-label">${t('دامنهٔ HTTPS', 'HTTPS DOMAIN')}</label>
+          <input type="text" id="fix-public-host" placeholder="your-service.up.railway.app" value="${esc(f.publicHost || '')}"></div>
+        <div><label class="fld-label">${t('میزبان پروکسی TCP', 'TCP PROXY HOST')}</label>
+          <input type="text" id="fix-tcp-host" placeholder="containers-us-west-1.railway.app" value="${esc(f.tcpHost || '')}"></div>
+        <div><label class="fld-label">TCP PORT</label>
+          <input type="number" id="fix-tcp-port" placeholder="12345" value="${f.tcpPort || ''}"></div>
+      </div>
+      <div class="actions">
+        <button class="btn sm-btn primary" data-act="save-hosts" type="button">${icon('save', 'ic ic-sm')}${t('ذخیره و ساخت لینک‌ها', 'SAVE & REBUILD LINKS')}</button>
+      </div>
+    </div>`;
+}
+
+/**
  * The update strip on the dashboard. It is deliberately loud only when a newer
  * release exists: the card keeps a "check" button otherwise, so the feature is
  * discoverable without shouting.
@@ -1865,7 +1899,7 @@ async function onAction(act, arg, el) {
         body: { fragment: $('#s-fragment')?.checked ?? true },
       }));
     case 'save-routing': {
-      const next = { dns: $('#s-rt-dns').value, enabled: $('#s-rt-enabled').checked };
+      const next = { enabled: $('#s-rt-enabled').checked };
       for (const row of RT_TOGGLES) {
         if (row.key === 'enabled') continue;
         next[row.key] = $(`#s-rt-${row.key}`).checked;
@@ -1886,7 +1920,6 @@ async function onAction(act, arg, el) {
         const el = $(`#s-rt-${row.key}`);
         if (el) el.checked = Boolean(d[row.key]);
       }
-      if (d.dns && $('#s-rt-dns')) $('#s-rt-dns').value = d.dns;
       toast(t('مقادیر پیش‌فرض برگشت؛ برای ذخیره دکمه را بزن.', 'Defaults restored — press save to keep them.'));
       return;
     }
@@ -1900,6 +1933,19 @@ async function onAction(act, arg, el) {
     case 'rt-copy': {
       const pre = $('#rt-preview');
       return copyText(pre ? pre.textContent : '');
+    }
+    case 'save-hosts': {
+      const body = {
+        publicHost: ($('#fix-public-host')?.value || '').trim(),
+        tcpHost: ($('#fix-tcp-host')?.value || '').trim(),
+        tcpPort: Number($('#fix-tcp-port')?.value || 0) || 0,
+      };
+      if (!body.publicHost && !body.tcpHost) return toast(tt('حداقل دامنهٔ HTTPS را وارد کن.', 'Enter at least the HTTPS domain.'), 'warn');
+      return withState(async () => {
+        const res = await api('/api/settings', { method: 'POST', body });
+        toast(tt('ذخیره شد؛ لینک‌ها دوباره ساخته شدند.', 'Saved — links rebuilt.'));
+        return res;
+      });
     }
     case 'save-cores':
       return withState(() => api('/api/settings', {
@@ -1937,14 +1983,6 @@ async function onAction(act, arg, el) {
       return undefined;
   }
 }
-
-document.addEventListener('change', (ev) => {
-  if (ev.target && ev.target.id === 's-rt-dns' && S.routing) {
-    const hit = (S.routing.dnsPresets || []).find((d) => d.key === ev.target.value);
-    const note = $('#rt-dns-note');
-    if (hit && note) note.innerHTML = t(hit.note, hit.noteEn);
-  }
-});
 
 document.addEventListener('click', (ev) => {
   const el = ev.target.closest('[data-act]');
@@ -2017,11 +2055,9 @@ async function submitAuth(ev) {
 const RT_TOGGLES = [
   { key: 'enabled', fa: 'قوانین فعال باشند', en: 'RULES ENABLED', hintFa: 'کلید اصلی؛ با خاموش‌کردن آن هیچ قاعده‌ای روی هسته‌ها نوشته نمی‌شود.', hintEn: 'Master switch: no rules are written to the cores when off.' },
   { key: 'blockAds', fa: 'مسدودسازی تبلیغات', en: 'BLOCK ADS', hintFa: 'لیست تبلیغات فارسی و خارجی، روی خود سرور بسته می‌شود.', hintEn: 'Persian and foreign ad lists, blocked on the server itself.' },
-  { key: 'blockSecurity', fa: 'مسدودسازی بدافزار و فیشینگ', en: 'BLOCK MALWARE', hintFa: 'دامنه و آی‌پی‌های آلوده و ماینرها.', hintEn: 'Malware, phishing and miner lists.' },
-  { key: 'blockQuic', fa: 'بستن QUIC (UDP 443)', en: 'BLOCK QUIC', hintFa: 'همان چیزی که DPI ایران بیشتر از همه محدود می‌کند.', hintEn: 'The protocol Iranian DPI throttles hardest.' },
+  { key: 'blockSecurity', fa: 'مسدودسازی بدافزار و فیشینگ', en: 'BLOCK MALWARE & PHISHING', hintFa: 'دامنه و آی‌پی‌های آلوده و ماینرها.', hintEn: 'Malware, phishing, miner domains and addresses.' },
+  { key: 'blockQuic', fa: 'بستن QUIC (UDP 443)', en: 'BLOCK QUIC (UDP 443)', hintFa: 'همان چیزی که DPI ایران بیشتر از همه محدود می‌کند.', hintEn: 'The protocol Iranian DPI throttles hardest.' },
   { key: 'blockBittorrent', fa: 'بستن تورنت', en: 'BLOCK TORRENT', hintFa: 'سرور به‌عنوان خروجی تورنت استفاده نمی‌شود.', hintEn: 'Keeps the service from being used as a torrent exit.' },
-  { key: 'iranDirect', fa: 'ایران مستقیم از سرور', en: 'IRAN DIRECT', hintFa: 'ترافیک سایت‌های ایرانی روی خود ریلوی مستقیم خارج می‌شود، بدون زنجیرهٔ بالادست.', hintEn: 'Iranian destinations leave the server directly, never through an upstream chain.' },
-  { key: 'clientRules', fa: 'همچنین در فایل‌های اشتراک (کلاینت)', en: 'ALSO IN SUBSCRIPTIONS', hintFa: 'اختیاری: همان قوانین داخل کانفیگ Xray/sing-box/Clash مشترک هم نوشته شود. پیش‌فرض خاموش است.', hintEn: 'Optional: also write the rules into the Xray/sing-box/Clash subscription files. Off by default.' },
 ];
 
 async function loadRouting(force = false) {
@@ -2055,16 +2091,16 @@ function renderRouting() {
   pane.innerHTML = `
     <div class="cols">
       <div class="card">
-        <p class="kicker">${icon('compass')}${t('مسیریابی ایران · روی سرور', 'IRAN ROUTING · ON THE SERVER')}</p>
+        <p class="kicker">${icon('compass')}${t('مسدودسازی · روی سرور', 'BLOCKING · ON THE SERVER')}</p>
         <p class="labor">${t(
-          'این قوانین روی خود سرور ریلوی اعمال می‌شوند، نه روی گوشی کاربر: هستهٔ Xray و sing-box هر اتصال را قبل از خروج بررسی می‌کنند، تبلیغات و بدافزار را می‌بندند و سایت‌های ایرانی را مستقیم بیرون می‌فرستند. کاربر فقط لینک را وصل می‌کند و هیچ فایل یا تنظیم اضافه‌ای لازم ندارد.',
+          'این قواعد روی خود سرور ریلوی اعمال می‌شوند، نه روی گوشی کاربر: هستهٔ Xray و sing-box هر اتصال را قبل از خروج بررسی می‌کنند و تبلیغات، فیشینگ/بدافزار، تورنت و (در صورت روشن بودن) QUIC را می‌بندند. کاربر فقط لینک را وصل می‌کند و هیچ فایل یا تنظیم اضافه‌ای لازم ندارد.',
           'The rules run on the Railway server itself, not on the user device: Xray and sing-box inspect every connection before it leaves, block ads and malware, and send Iranian destinations straight out. Users just connect — no extra files or settings on their side.',
         )}</p>
         <div class="rt-status ${ready ? 'ok' : 'warn'}">
           ${icon(ready ? 'check' : 'alert', 'ic ic-sm')}
           ${ready
-            ? t('دادهٔ قوانین ایران روی سرور نصب است؛ قواعد کامل فعال‌اند.', 'The Iranian rule data is installed on the server — full rule set active.')
-            : t('دادهٔ قوانین ایران روی سرور نیست؛ فقط قواعد پایهٔ سازگار با فایل‌های پیش‌فرض Xray نوشته می‌شود.', 'Iranian rule data is missing on the server — only the base rules that stock Xray data knows are written.')}
+            ? t('دادهٔ قوانین روی سرور نصب است؛ قواعد کامل فعال‌اند.', 'The rule data is installed on the server — full rule set active.')
+            : t('دادهٔ قوانین روی سرور نیست؛ فقط قواعد پایه که فایل‌های پیش‌فرض Xray می‌شناسد نوشته می‌شود.', 'Rule data is missing on the server — only the base rules stock Xray data knows are written.')}
         </div>
         <a class="repo-chip" href="${esc(r.source.xray)}" target="_blank" rel="noopener">
           <svg class="ic ic-sm ic-brand"><use href="#i-github"/></svg>${esc(r.source.author)}/${esc(r.source.name.replaceAll(' ', '-'))}
@@ -2077,15 +2113,6 @@ function renderRouting() {
               ${t(row.fa, row.en)}
             </label>`).join('')}
         </div>
-        <div class="field-grid" style="margin-top:12px">
-          <div>
-            <label class="fld-label">${t('DNS دامنه‌های ایرانی', 'DNS FOR IRANIAN DOMAINS')}</label>
-            <select id="s-rt-dns">
-              ${(r.dnsPresets || []).map((d) => `<option value="${esc(d.key)}" ${s.dns === d.key ? 'selected' : ''}>${esc(tt(d.label, d.labelEn))}</option>`).join('')}
-            </select>
-          </div>
-        </div>
-        <p class="hint" id="rt-dns-note">${t(r.dns.note, r.dns.noteEn)}</p>
         <div class="actions">
           <button class="btn sm-btn primary" data-act="save-routing" type="button">${icon('save', 'ic ic-sm')}${t('ذخیره و اعمال', 'SAVE & APPLY')}</button>
           <button class="btn sm-btn ghost" data-act="routing-reset" type="button">${icon('refresh', 'ic ic-sm')}${t('بازگشت به پیش‌فرض', 'RESET TO DEFAULT')}</button>
@@ -2120,15 +2147,15 @@ function renderRouting() {
       <div class="spread">
         <p class="kicker" style="margin:0">${icon('terminal')}${t('قواعدی که الان روی سرور اجرا می‌شوند', 'RULES CURRENTLY RUNNING ON THE SERVER')}</p>
         <div class="pill-group" id="rt-format">
-          ${[['server', t('سرور', 'SERVER')], ['xray', 'xray'], ['singbox', 'singbox'], ['clash', 'clash']].map(([f, label]) => `<button class="pill ${S.rtFormat === f ? 'active' : ''}" data-act="rt-preview" data-arg="${f}" type="button">${label}</button>`).join('')}
+          ${[['server', t('سرور', 'SERVER')]].map(([f, label]) => `<button class="pill ${S.rtFormat === f ? 'active' : ''}" data-act="rt-preview" data-arg="${f}" type="button">${label}</button>`).join('')}
         </div>
       </div>
       <pre class="console" id="rt-preview" style="margin-top:10px;max-height:340px">…</pre>
       <div class="actions">
         <button class="btn sm-btn ghost" data-act="rt-copy" type="button">${icon('copy', 'ic ic-sm')}${t('کپی', 'COPY')}</button>
         <span class="hint" style="margin:0">${t(
-          `سرور: ${r.counts.serverRules} قاعده · کلاینت (اختیاری): Xray ${r.counts.xrayRules} · sing-box ${r.counts.singboxRuleSets} · Clash ${r.counts.clashRules}`,
-          `server: ${r.counts.serverRules} rules · client (optional): Xray ${r.counts.xrayRules} · sing-box ${r.counts.singboxRuleSets} · Clash ${r.counts.clashRules}`,
+          `${r.counts.serverRules} قاعده روی سرور · ${r.counts.ruleSets} مجموعهٔ قوانین برای sing-box`,
+          `${r.counts.serverRules} rules on the server · ${r.counts.ruleSets} rule sets for sing-box`,
         )}</span>
       </div>
       ${freeStrip()}

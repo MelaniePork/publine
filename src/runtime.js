@@ -24,6 +24,28 @@ import {
 } from './store.js';
 import { RAILWAY, MUX_PORT, PORT, LIMITS } from './env.js';
 
+/**
+ * Last-resort safety net: a rule that references geo data the core cannot load
+ * must never take the whole core down (and with it every config the panel
+ * serves). If a generated config is rejected we retry once without the optional
+ * rule data and keep the cores running.
+ */
+function withoutGeoData(config, core) {
+  const clone = JSON.parse(JSON.stringify(config));
+  const mentionsGeo = (rule) => {
+    const text = JSON.stringify(rule);
+    return text.includes('geosite:') || text.includes('geoip:') || text.includes('"rule_set"');
+  };
+  if (core === 'xray' && clone.routing && Array.isArray(clone.routing.rules)) {
+    clone.routing.rules = clone.routing.rules.filter((rule) => !mentionsGeo(rule));
+  }
+  if (core === 'singbox' && clone.route) {
+    if (Array.isArray(clone.route.rules)) clone.route.rules = clone.route.rules.filter((rule) => !mentionsGeo(rule));
+    delete clone.route.rule_set;
+  }
+  return clone;
+}
+
 export class Runtime extends EventEmitter {
   constructor() {
     super();
@@ -109,7 +131,26 @@ export class Runtime extends EventEmitter {
     return routes;
   }
 
+  /**
+   * Railway only injects RAILWAY_PUBLIC_DOMAIN / the TCP proxy values while the
+   * service is actually exposed. A redeploy or a re-created service can come up
+   * without them, which used to turn every link into "host:0". Remember the
+   * values in the document the first time we see them, so the links survive.
+   */
+  rememberHosts() {
+    const doc = getDoc();
+    const patch = {};
+    if (!doc.settings.publicHost && RAILWAY.publicDomain) patch.publicHost = RAILWAY.publicDomain;
+    if (!doc.settings.tcpHost && RAILWAY.tcpDomain) patch.tcpHost = RAILWAY.tcpDomain;
+    if (!Number(doc.settings.tcpPort) && RAILWAY.tcpPort) patch.tcpPort = RAILWAY.tcpPort;
+    if (!Object.keys(patch).length) return null;
+    setDoc((d) => Object.assign(d.settings, patch));
+    event('hosts-saved', `Railway hosts remembered: ${patch.publicHost || doc.settings.publicHost || '-'} / ${patch.tcpHost || '-'}`);
+    return patch;
+  }
+
   async boot() {
+    this.rememberHosts();
     this.startMux();
     await this.apply({ reason: 'boot' });
     this.timers.push(setInterval(() => this.tick().catch(() => {}), LIMITS.statsIntervalMs));
@@ -199,6 +240,15 @@ export class Runtime extends EventEmitter {
         clearOverride('xray');
         ok = await this.cores.xray.start(xray.config);
       }
+      if (!ok) {
+        // never leave the service without a core: retry without the geo rules
+        const safe = withoutGeoData(xrayConfig, 'xray');
+        ok = await this.cores.xray.start(safe);
+        if (ok) {
+          event('xray-warn', 'rule data was rejected by Xray — started without the optional block rules');
+          this.raw.active.xray = JSON.stringify(safe, null, 2);
+        }
+      }
       if (!ok) event('xray-error', `Xray did not start: ${this.cores.xray.lastError || 'unknown'}`);
     } else {
       await this.cores.xray.stop();
@@ -212,6 +262,14 @@ export class Runtime extends EventEmitter {
         this.raw.override.singbox = false;
         clearOverride('singbox');
         ok = await this.cores.singbox.start(singbox.config);
+      }
+      if (!ok) {
+        const safe = withoutGeoData(singboxConfig, 'singbox');
+        ok = await this.cores.singbox.start(safe);
+        if (ok) {
+          event('singbox-warn', 'rule sets were rejected by sing-box — started without the optional block rules');
+          this.raw.active.singbox = JSON.stringify(safe, null, 2);
+        }
       }
       if (!ok) event('singbox-error', `sing-box did not start: ${this.cores.singbox.lastError || 'unknown'}`);
     } else {

@@ -374,7 +374,7 @@ html[dir="rtl"] .tgl input:checked + .track::after{transform:translateX(-18px)}
 .repo-chip svg,.foot-link svg{flex:0 0 auto}
 
 /* ═══════════════════════════════════════════════════════════════════════
-   1.0.3 · rules edit + toast fix
+   1.0.4 · routing + host rescue
    One rhythm for every pane, no card touching its neighbour, and a single
    easing curve for all transitions instead of a dozen ad-hoc durations.
    ═══════════════════════════════════════════════════════════════════════ */
@@ -654,3 +654,14 @@ footer.colophon-wrap,footer{margin-top:26px}
 #pane-routing .console{white-space:pre;overflow:auto;direction:ltr;text-align:left;font-size:11.5px;line-height:1.6}
 
 #pane-routing .cols{align-items:stretch}
+
+/* ── "no domain / no tcp proxy" rescue card ────────────────────────── */
+.hosts-alert{
+  border:2px solid var(--ink);background:var(--paper-2);
+  box-shadow:var(--sh-d) var(--sh-d) 0 0 var(--sh-c);
+  padding:14px 16px;margin-bottom:var(--gap);
+}
+.hosts-alert-head{display:flex;align-items:center;gap:8px;font-size:13px;line-height:1.5}
+.hosts-alert-head svg{flex:0 0 auto}
+.hosts-alert .field-grid{margin-bottom:10px}
+@media (max-width:640px){ .hosts-alert .field-grid{grid-template-columns:minmax(0,1fr)} }
