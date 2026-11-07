@@ -1,5 +1,9 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { BIN_DIR } from './env.js';
+
 /**
- * NIGHTLINE · Railway Edition — Iranian split-routing rules
+ * NIGHTLINE · Railway Edition — Iranian routing rules (applied on the server)
  *
  * The rules follow the layout of the "Iran v2ray rules" project by Chocolate4U
  * (https://github.com/Chocolate4U/Iran-v2ray-rules) and its sing-box / Clash
@@ -94,6 +98,96 @@ export const DNS_PRESETS = {
   },
 };
 
+/* ── rule data that ships inside the image ───────────────────────────── */
+
+/**
+ * The Docker build downloads the Iranian geo files and sing-box rule-sets next
+ * to the cores and writes a marker. Without the marker we fall back to the
+ * names that stock Xray data knows, so a config never fails to load.
+ */
+export function rulesAssets() {
+  const marker = path.join(BIN_DIR, '.iran-rules.json');
+  let iran = false;
+  try {
+    iran = Boolean(JSON.parse(fs.readFileSync(marker, 'utf8')).iran);
+  } catch {
+    iran = false;
+  }
+  const srsDir = path.join(BIN_DIR, 'srs');
+  const srs = (name) => path.join(srsDir, `${name}.srs`);
+  const hasSrs = iran && fs.existsSync(srs('geosite-category-ir'));
+  return { dir: BIN_DIR, srsDir, iran, srs, hasSrs };
+}
+
+/**
+ * Rules the cores enforce ON THE SERVER (this Railway container):
+ * ads / malware / phishing / miners are dropped, QUIC and BitTorrent can be
+ * dropped, private ranges never leave the box. No client-side setup needed.
+ */
+export function serverXrayRules(settings, assets = rulesAssets()) {
+  const s = { ...ROUTING_DEFAULTS, ...(settings || {}) };
+  const rules = [];
+  if (!s.enabled) return rules;
+  if (s.blockAds) {
+    rules.push({
+      type: 'field',
+      outboundTag: 'block',
+      domain: assets.iran ? ['geosite:category-ads-all', 'geosite:ads'] : ['geosite:category-ads-all'],
+    });
+  }
+  if (s.blockSecurity && assets.iran) {
+    rules.push({
+      type: 'field',
+      outboundTag: 'block',
+      domain: ['geosite:malware', 'geosite:phishing', 'geosite:cryptominers'],
+    });
+    rules.push({ type: 'field', outboundTag: 'block', ip: ['geoip:malware', 'geoip:phishing'] });
+  }
+  if (s.blockBittorrent) {
+    // stops the service being used as a torrent exit node
+    rules.push({ type: 'field', protocol: ['bittorrent'], outboundTag: 'block' });
+  }
+  if (s.blockQuic) {
+    rules.push({ type: 'field', network: 'udp', port: '443', outboundTag: 'block' });
+  }
+  if (s.iranDirect && assets.iran) {
+    // explicit: Iranian destinations leave the server directly, never through
+    // an upstream chain (and they are never sent back into an inbound).
+    rules.push({ type: 'field', outboundTag: 'direct', domain: ['geosite:category-ir'] });
+    rules.push({ type: 'field', outboundTag: 'direct', ip: ['geoip:ir'] });
+  }
+  return rules;
+}
+
+export function serverSingboxRules(settings, assets = rulesAssets()) {
+  const s = { ...ROUTING_DEFAULTS, ...(settings || {}) };
+  if (!s.enabled) return { ruleSets: [], rules: [] };
+  const ruleSets = [];
+  const rules = [];
+  const addSet = (tag, file) => {
+    if (assets.hasSrs) ruleSets.push({ type: 'local', tag, format: 'binary', path: assets.srs(file) });
+    else ruleSets.push({ type: 'remote', tag, format: 'binary', url: `${SRS_RAW}/${file}.srs` });
+  };
+  if (s.blockAds) {
+    addSet('geosite-ads', 'geosite-category-ads-all');
+    rules.push({ rule_set: 'geosite-ads', action: 'reject' });
+  }
+  if (s.blockSecurity) {
+    addSet('geosite-malware', 'geosite-malware');
+    addSet('geosite-phishing', 'geosite-phishing');
+    addSet('geoip-malware', 'geoip-malware');
+    rules.push({ rule_set: ['geosite-malware', 'geosite-phishing'], action: 'reject' });
+    rules.push({ rule_set: 'geoip-malware', action: 'reject' });
+  }
+  if (s.blockQuic) rules.push({ protocol: 'quic', action: 'reject' });
+  if (s.iranDirect) {
+    addSet('geosite-ir', 'geosite-category-ir');
+    addSet('geoip-ir', 'geoip-ir');
+    rules.push({ rule_set: ['geosite-ir', 'geoip-ir'], outbound: 'direct' });
+  }
+  return { ruleSets, rules };
+}
+
 export const ROUTING_DEFAULTS = {
   enabled: true,
   // `iranDat` says "the Iranian geosite/geoip files are installed beside the
@@ -105,7 +199,10 @@ export const ROUTING_DEFAULTS = {
   blockAds: true,
   blockSecurity: true,
   blockQuic: false,
+  blockBittorrent: true,
   directPrivate: true,
+  // Client-side rules are optional: the panel enforces everything on the server.
+  clientRules: false,
   dns: 'split',
 };
 
@@ -296,11 +393,13 @@ export function routingSummary(doc) {
   return {
     settings: s,
     defaults: ROUTING_DEFAULTS,
+    assets: rulesAssets(),
     dns: { key: s.dns, ...preset },
     dnsPresets: Object.entries(DNS_PRESETS).map(([key, v]) => ({ key, ...v })),
     source: ROUTING_SOURCE,
     geoFiles: GEO_FILES,
     counts: {
+      serverRules: serverXrayRules(s).length,
       xrayRules: xrayRules(s).length,
       singboxRuleSets: singboxRuleSets(s).length,
       clashRules: clashRules(s).length,
@@ -310,7 +409,12 @@ export function routingSummary(doc) {
 
 export function previewRouting(doc) {
   const s = routingSettings(doc);
+  const assets = rulesAssets();
   return {
+    server: JSON.stringify({
+      xray: { domainStrategy: 'IPIfNonMatch', rules: serverXrayRules(s, assets) },
+      singbox: (() => { const r = serverSingboxRules(s, assets); return { rule_set: r.ruleSets.map((x) => ({ ...x, path: x.path ? x.path.replace(/^.*\/srs\//, 'srs/') : undefined })), rules: r.rules }; })(),
+    }, null, 2),
     xray: JSON.stringify({ dns: xrayDns(s), routing: { domainStrategy: s.enabled ? 'IPIfNonMatch' : 'AsIs', rules: xrayRules(s) } }, null, 2),
     singbox: JSON.stringify({ dns: singboxDns(s), route: { rule_set: singboxRuleSets(s), rules: singboxRules(s) } }, null, 2),
     clash: [

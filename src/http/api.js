@@ -9,7 +9,7 @@ import net from 'node:net';
 import zlib from 'node:zlib';
 import { analyse, applyProfile } from '../iran.js';
 import { stripAnsi } from '../text.js';
-import { checkUpdate, applyUpdate } from '../update.js';
+import { checkUpdate, applyUpdate, pendingUpdate } from '../update.js';
 import { scanner, DEFAULTS as RAILYNX_DEFAULTS, parseVlessLink } from '../railynx.js';
 import { readFileSync } from 'node:fs';
 import { APP, RAILWAY, IS_RAILWAY, DATA_DIR, PORT, MUX_PORT, BIN, NODE_ENV, LIMITS } from '../env.js';
@@ -67,14 +67,14 @@ function send(res, status, body, headers = {}) {
   res.end(payload);
 }
 
-function readBody(req) {
+function readBody(req, limit = LIMITS.maxBodyBytes) {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
     req.on('data', (chunk) => {
       size += chunk.length;
-      if (size > LIMITS.maxBodyBytes) {
-        reject(new Error('body too large'));
+      if (size > limit) {
+        reject(new Error(`body too large (limit ${Math.round(limit / 1024)} KB)`));
         req.destroy();
         return;
       }
@@ -314,6 +314,9 @@ export function buildBootstrap(runtime, req) {
     settings: { theme: doc.settings.theme, lang: doc.settings.lang },
   };
 }
+
+/* ── in-panel update job (survives until the process restarts) ────────── */
+let UPDATE_JOB = { state: 'idle', startedAt: 0, logs: [], report: null, error: '' };
 
 /* ── main router ─────────────────────────────────────────────────────── */
 
@@ -632,8 +635,13 @@ export async function handleApi(ctx) {
   }
 
   if (route === 'POST /api/apply') {
-    await runtime.apply({ reason: 'manual' });
-    return send(res, 200, { ok: true, state: buildState(runtime, req) });
+    // Fire and answer: a slow core restart must never turn into a 504 in the UI.
+    const snapshot = buildState(runtime, req);
+    send(res, 200, { ok: true, applying: true, state: snapshot });
+    setImmediate(() => {
+      runtime.apply({ reason: 'manual' }).catch((err) => console.error('[apply]', err));
+    });
+    return undefined;
   }
 
   const coreMatch = /^\/api\/cores\/(xray|singbox|mtproto)\/restart$/.exec(path);
@@ -734,15 +742,22 @@ export async function handleApi(ctx) {
   }
 
   if (route === 'POST /api/restore') {
-    const body = await readBody(req);
+    // A backup with a few hundred users is a couple of megabytes — the default
+    // 256 KB API limit used to cut the upload off mid-flight.
+    const body = await readBody(req, 32 * 1024 * 1024);
     try {
       importBackup(JSON.stringify(body));
     } catch (err) {
       return send(res, 400, { error: err.message });
     }
     load();
-    await runtime.apply({ reason: 'restore' });
-    return send(res, 200, { ok: true, state: buildState(runtime, req) });
+    // Answer *before* restarting the cores: Railway's edge closes a request
+    // that waits too long (504) even though the restore itself succeeded.
+    send(res, 200, { ok: true, applying: true, state: buildState(runtime, req) });
+    setImmediate(() => {
+      runtime.apply({ reason: 'restore' }).catch((err) => console.error('[restore]', err));
+    });
+    return undefined;
   }
 
   if (route === 'GET /api/update') {
@@ -751,17 +766,35 @@ export async function handleApi(ctx) {
   }
 
   if (route === 'POST /api/update') {
-    const logs = [];
-    try {
-      const report = await applyUpdate({ restart: false, onLog: (line) => logs.push(line) });
-      // restart the process once the response is on the wire: Railway (and the
-      // local runner) bring the panel straight back up on the new code
-      setTimeout(() => process.exit(0), 700);
-      return send(res, 200, { ...report, logs });
-    } catch (err) {
-      return send(res, 500, { ok: false, error: String(err && err.message ? err.message : err), logs });
+    if (UPDATE_JOB.state === 'running') {
+      return send(res, 409, { ok: false, error: 'an update is already running', job: UPDATE_JOB });
     }
+    const logs = [];
+    UPDATE_JOB = { state: 'running', startedAt: Date.now(), logs, report: null, error: '' };
+    // Answer immediately: Railway's edge gives up on long requests (504), and
+    // the download can take a minute on a slow link.
+    applyUpdate({ onLog: (line) => { logs.push(line); console.log('[update]', line); } })
+      .then((report) => {
+        UPDATE_JOB.state = 'staged';
+        UPDATE_JOB.report = report;
+        console.log(`[update] staged v${report.version}; restarting to apply it`);
+        // exit non-zero so the Railway restart policy brings the container back;
+        // src/boot.js copies the staged files over the install on the way up.
+        setTimeout(() => process.exit(1), 1500);
+      })
+      .catch((err) => {
+        UPDATE_JOB.state = 'error';
+        UPDATE_JOB.error = String(err && err.message ? err.message : err);
+        console.error('[update]', UPDATE_JOB.error);
+      });
+    return send(res, 202, { ok: true, started: true, current: APP.version, message: 'update staged in the background' });
   }
+
+  if (route === 'GET /api/update/status') {
+    const pending = pendingUpdate();
+    return send(res, 200, { ...UPDATE_JOB, pending, current: APP.version });
+  }
+
 
   if (route === 'POST /api/links/ping') {
     const body = await readBody(req);

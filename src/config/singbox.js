@@ -5,6 +5,7 @@
  * WireGuard.  On Railway only the TCP/HTTP reachable inbounds are useful, but
  * the UDP ones are still generated so a multi-node setup can consume them.
  */
+import { routingSettings, serverSingboxRules, rulesAssets } from '../routing.js';
 import { effectiveEnabled } from '../store.js';
 import { describeInbound, edgePath, edgeServiceName } from '../catalog.js';
 import { ssServerKey, legacySsPassword } from './shared.js';
@@ -206,6 +207,8 @@ export function buildSingboxConfig({ doc, reality, certs, sharedSsPassword, serv
     });
   }
 
+  const serverRules = serverSingboxRules(routingSettings(doc), rulesAssets());
+
   const config = {
     log: { level: logLevel, timestamp: true },
     inbounds,
@@ -215,10 +218,13 @@ export function buildSingboxConfig({ doc, reality, certs, sharedSsPassword, serv
     ],
     route: {
       auto_detect_interface: true,
+      // Iranian block rules are enforced here, on the server (src/routing.js).
+      ...(serverRules.ruleSets.length ? { rule_set: serverRules.ruleSets } : {}),
       rules: [
         { action: 'sniff' },
         { protocol: 'dns', action: 'hijack-dns' },
         { ip_is_private: true, action: 'reject' },
+        ...serverRules.rules,
       ],
       final: 'direct',
     },

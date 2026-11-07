@@ -17,7 +17,7 @@ const S = {
   updateTimer: null,
   routing: null,
   rtPreview: null,
-  rtFormat: 'xray',
+  rtFormat: 'server',
   busy: false,
 };
 
@@ -1821,15 +1821,42 @@ async function onAction(act, arg, el) {
       return;
     }
     case 'apply-update': {
-      if (!window.confirm(tt('فایل‌های پنل از آخرین ریلیز جایگزین می‌شوند و پنل ری‌استارت می‌شود. ادامه؟', 'Panel files will be replaced from the newest release and the panel restarts. Continue?'))) return;
-      toast(tt('در حال دانلود و نصب…', 'Downloading and installing…'));
+      if (!window.confirm(tt(
+        'ریلیز جدید روی والیوم دانلود می‌شود و پنل یک‌بار ری‌استارت می‌کند (۳۰ تا ۹۰ ثانیه قطعی). داده‌ها و کاربران دست‌نخورده می‌مانند. ادامه؟',
+        'The new release is downloaded to the volume and the panel restarts once (30–90 s offline). Data and users are untouched. Continue?',
+      ))) return;
+      const btn = el;
+      if (btn) { btn.disabled = true; btn.classList.add('is-pressed'); }
+      toast(tt('دانلود در پس‌زمینه شروع شد…', 'Download started in the background…'));
       try {
-        const r = await api('/api/update', { method: 'POST' });
-        toast(`${tt('نصب شد', 'installed')} · v${r.version}`);
-        setTimeout(() => window.location.reload(), 4000);
+        await api('/api/update', { method: 'POST' });
       } catch (err) {
-        toast(err.message, 'warn');
+        if (btn) { btn.disabled = false; btn.classList.remove('is-pressed'); }
+        return toast(err.message, 'warn');
       }
+      // poll the job; the panel disappears for a moment when it restarts
+      let seenDown = false;
+      for (let i = 0; i < 90; i += 1) {
+        await new Promise((r) => setTimeout(r, 2000));
+        try {
+          const st = await api('/api/update/status');
+          if (st.state === 'error') {
+            toast(`${tt('به‌روزرسانی انجام نشد', 'update failed')}: ${st.error}`, 'warn');
+            if (btn) { btn.disabled = false; btn.classList.remove('is-pressed'); }
+            return;
+          }
+          if (st.state === 'staged') {
+            toast(tt('نسخه روی والیوم آماده شد؛ پنل ری‌استارت می‌شود…', 'Staged on the volume — restarting the panel…'));
+            break;
+          }
+          if (i === 3) toast(tt('در حال دانلود…', 'downloading…'));
+        } catch {
+          seenDown = true;
+          toast(tt('پنل در حال ری‌استارت است؛ صفحه چند لحظه دیگر خودش باز می‌شود.', 'The panel is restarting — the page reloads in a moment.'));
+          break;
+        }
+      }
+      setTimeout(() => window.location.reload(), seenDown ? 25000 : 8000);
       return;
     }
     case 'save-fragment':
@@ -1988,13 +2015,13 @@ async function submitAuth(ev) {
 /* ── iran routing (split rules) ──────────────────────────────────────── */
 
 const RT_TOGGLES = [
-  { key: 'enabled', fa: 'قوانین فعال باشند', en: 'RULES ENABLED', hintFa: 'کلید اصلی؛ با خاموش‌کردن آن همه‌چیز از تونل می‌گذرد.', hintEn: 'Master switch — everything goes through the tunnel when off.' },
-  { key: 'iranDat', fa: 'فایل‌های قوانین ایران نصب است', en: 'IRAN RULE FILES INSTALLED', hintFa: 'اگر geosite.dat و geoip.dat مخزن ایران را کنار برنامه گذاشته‌ای. با خاموش بودنش فقط نام‌هایی نوشته می‌شود که فایل پیش‌فرض Xray هم می‌شناسد تا کانفیگ بی‌خطا بالا بیاید.', hintEn: 'Turn off if you use the stock Xray data files — only names both data sets know are written.' },
-  { key: 'iranDirect', fa: 'دامنه و آی‌پی ایران مستقیم', en: 'IRAN DIRECT', hintFa: 'سایت‌های ایرانی بدون تونل باز می‌شوند (سریع‌تر و بی‌مصرف).', hintEn: 'Iranian sites bypass the tunnel.' },
-  { key: 'blockAds', fa: 'مسدودسازی تبلیغات', en: 'BLOCK ADS', hintFa: 'لیست تبلیغات فارسی و خارجی.', hintEn: 'Persian and foreign ad lists.' },
-  { key: 'blockSecurity', fa: 'مسدودسازی بدافزار و فیشینگ', en: 'BLOCK MALWARE', hintFa: 'دامنه و آی‌پی‌های آلوده.', hintEn: 'Malware, phishing and miner lists.' },
+  { key: 'enabled', fa: 'قوانین فعال باشند', en: 'RULES ENABLED', hintFa: 'کلید اصلی؛ با خاموش‌کردن آن هیچ قاعده‌ای روی هسته‌ها نوشته نمی‌شود.', hintEn: 'Master switch: no rules are written to the cores when off.' },
+  { key: 'blockAds', fa: 'مسدودسازی تبلیغات', en: 'BLOCK ADS', hintFa: 'لیست تبلیغات فارسی و خارجی، روی خود سرور بسته می‌شود.', hintEn: 'Persian and foreign ad lists, blocked on the server itself.' },
+  { key: 'blockSecurity', fa: 'مسدودسازی بدافزار و فیشینگ', en: 'BLOCK MALWARE', hintFa: 'دامنه و آی‌پی‌های آلوده و ماینرها.', hintEn: 'Malware, phishing and miner lists.' },
   { key: 'blockQuic', fa: 'بستن QUIC (UDP 443)', en: 'BLOCK QUIC', hintFa: 'همان چیزی که DPI ایران بیشتر از همه محدود می‌کند.', hintEn: 'The protocol Iranian DPI throttles hardest.' },
-  { key: 'directPrivate', fa: 'شبکهٔ محلی مستقیم', en: 'LAN DIRECT', hintFa: 'آدرس‌های خصوصی هیچ‌وقت از تونل نمی‌روند.', hintEn: 'Private ranges never enter the tunnel.' },
+  { key: 'blockBittorrent', fa: 'بستن تورنت', en: 'BLOCK TORRENT', hintFa: 'سرور به‌عنوان خروجی تورنت استفاده نمی‌شود.', hintEn: 'Keeps the service from being used as a torrent exit.' },
+  { key: 'iranDirect', fa: 'ایران مستقیم از سرور', en: 'IRAN DIRECT', hintFa: 'ترافیک سایت‌های ایرانی روی خود ریلوی مستقیم خارج می‌شود، بدون زنجیرهٔ بالادست.', hintEn: 'Iranian destinations leave the server directly, never through an upstream chain.' },
+  { key: 'clientRules', fa: 'همچنین در فایل‌های اشتراک (کلاینت)', en: 'ALSO IN SUBSCRIPTIONS', hintFa: 'اختیاری: همان قوانین داخل کانفیگ Xray/sing-box/Clash مشترک هم نوشته شود. پیش‌فرض خاموش است.', hintEn: 'Optional: also write the rules into the Xray/sing-box/Clash subscription files. Off by default.' },
 ];
 
 async function loadRouting(force = false) {
@@ -2022,15 +2049,23 @@ function renderRouting() {
   }
   const r = S.routing;
   const s = r.settings;
+  const assets = r.assets || {};
+  const ready = Boolean(assets.iran);
 
   pane.innerHTML = `
     <div class="cols">
       <div class="card">
-        <p class="kicker">${icon('compass')}${t('قوانین مسیریابی ایران', 'IRAN ROUTING RULES')}</p>
+        <p class="kicker">${icon('compass')}${t('مسیریابی ایران · روی سرور', 'IRAN ROUTING · ON THE SERVER')}</p>
         <p class="labor">${t(
-          'ترافیک ایرانی مستقیم و بدون تونل می‌رود، تبلیغات و بدافزار بسته می‌شود و بقیهٔ دنیا از تونل عبور می‌کند. این قوانین به‌صورت پیش‌فرض روشن‌اند و در همهٔ فایل‌های اشتراک (Xray، sing-box و Clash) نوشته می‌شوند.',
-          'Iranian traffic goes out directly, ads and malware are blocked, everything else is tunnelled. The rules are on by default and are baked into every subscription file (Xray, sing-box and Clash).',
+          'این قوانین روی خود سرور ریلوی اعمال می‌شوند، نه روی گوشی کاربر: هستهٔ Xray و sing-box هر اتصال را قبل از خروج بررسی می‌کنند، تبلیغات و بدافزار را می‌بندند و سایت‌های ایرانی را مستقیم بیرون می‌فرستند. کاربر فقط لینک را وصل می‌کند و هیچ فایل یا تنظیم اضافه‌ای لازم ندارد.',
+          'The rules run on the Railway server itself, not on the user device: Xray and sing-box inspect every connection before it leaves, block ads and malware, and send Iranian destinations straight out. Users just connect — no extra files or settings on their side.',
         )}</p>
+        <div class="rt-status ${ready ? 'ok' : 'warn'}">
+          ${icon(ready ? 'check' : 'alert', 'ic ic-sm')}
+          ${ready
+            ? t('دادهٔ قوانین ایران روی سرور نصب است؛ قواعد کامل فعال‌اند.', 'The Iranian rule data is installed on the server — full rule set active.')
+            : t('دادهٔ قوانین ایران روی سرور نیست؛ فقط قواعد پایهٔ سازگار با فایل‌های پیش‌فرض Xray نوشته می‌شود.', 'Iranian rule data is missing on the server — only the base rules that stock Xray data knows are written.')}
+        </div>
         <a class="repo-chip" href="${esc(r.source.xray)}" target="_blank" rel="noopener">
           <svg class="ic ic-sm ic-brand"><use href="#i-github"/></svg>${esc(r.source.author)}/${esc(r.source.name.replaceAll(' ', '-'))}
         </a>
@@ -2044,7 +2079,7 @@ function renderRouting() {
         </div>
         <div class="field-grid" style="margin-top:12px">
           <div>
-            <label class="fld-label">${t('DNS', 'DNS')}</label>
+            <label class="fld-label">${t('DNS دامنه‌های ایرانی', 'DNS FOR IRANIAN DOMAINS')}</label>
             <select id="s-rt-dns">
               ${(r.dnsPresets || []).map((d) => `<option value="${esc(d.key)}" ${s.dns === d.key ? 'selected' : ''}>${esc(tt(d.label, d.labelEn))}</option>`).join('')}
             </select>
@@ -2058,18 +2093,23 @@ function renderRouting() {
       </div>
 
       <div class="card card-subtle">
-        <p class="kicker">${icon('download')}${t('فایل‌های قوانین (Xray / v2ray)', 'RULE FILES (XRAY / V2RAY)')}</p>
+        <p class="kicker">${icon('file')}${t('دادهٔ قوانین', 'RULE DATA')}</p>
         <p class="hint" style="margin-top:0">${t(
-          'برنامه‌های Xray و v2rayNG برای خواندن این قوانین به فایل‌های .dat نیاز دارند. فایل‌ها را بگیر و کنار برنامه در پوشهٔ assets بگذار؛ sing-box و Clash خودشان از اینترنت می‌خوانند و کاری لازم نیست.',
-          'Xray and v2rayNG need the .dat files next to the app (assets folder). sing-box and Clash fetch everything from the internet — nothing to install.',
+          'این فایل‌ها هنگام ساخت ایمیج روی سرور قرار می‌گیرند و همین‌جا اجرا می‌شوند؛ چیزی روی گوشی کاربر نصب نمی‌شود. برای استفاده در کلاینت دلخواه (اختیاری) از همین دکمه‌ها بگیرید.',
+          'These files ship with the image and run on the server — nothing is installed on the user device. Use these buttons only if you also want them on a client of your own.',
         )}</p>
-        <div class="stack-sm">
+        <div class="rt-files">
           ${(r.geoFiles || []).map((f) => `
             <div class="rt-file">
-              <span class="mono">${esc(f.name)}</span>
-              <span class="rt-file-label">${t(f.label, f.labelEn)}</span>
-              <a class="mini" href="${esc(f.url)}" target="_blank" rel="noopener">${icon('download', 'ic ic-sm')}GitHub</a>
-              <a class="mini ghost" href="${esc(f.cdn)}" target="_blank" rel="noopener">${icon('cloud-up', 'ic ic-sm')}CDN</a>
+              <span class="rt-file-ic">${icon('file', 'ic ic-sm')}</span>
+              <span class="rt-file-main">
+                <b class="mono">${esc(f.name)}</b>
+                <span class="rt-file-label">${t(f.label, f.labelEn)}</span>
+              </span>
+              <span class="rt-file-actions">
+                <a class="mini" href="${esc(f.url)}" target="_blank" rel="noopener" title="GitHub">${icon('download', 'ic ic-sm')}<span>GitHub</span></a>
+                <a class="mini" href="${esc(f.cdn)}" target="_blank" rel="noopener" title="CDN">${icon('cloud-up', 'ic ic-sm')}<span>CDN</span></a>
+              </span>
             </div>`).join('')}
         </div>
         <p class="hint">${t('اگر GitHub باز نشد، از ستون CDN بگیر.', 'Use the CDN column when GitHub is unreachable.')}</p>
@@ -2078,17 +2118,17 @@ function renderRouting() {
 
     <div class="card" style="margin-top:14px">
       <div class="spread">
-        <p class="kicker" style="margin:0">${icon('file')}${t('پیش‌نمایش قوانین تولیدشده', 'GENERATED RULES PREVIEW')}</p>
+        <p class="kicker" style="margin:0">${icon('terminal')}${t('قواعدی که الان روی سرور اجرا می‌شوند', 'RULES CURRENTLY RUNNING ON THE SERVER')}</p>
         <div class="pill-group" id="rt-format">
-          ${['xray', 'singbox', 'clash'].map((f) => `<button class="pill ${S.rtFormat === f ? 'active' : ''}" data-act="rt-preview" data-arg="${f}" type="button">${f}</button>`).join('')}
+          ${[['server', t('سرور', 'SERVER')], ['xray', 'xray'], ['singbox', 'singbox'], ['clash', 'clash']].map(([f, label]) => `<button class="pill ${S.rtFormat === f ? 'active' : ''}" data-act="rt-preview" data-arg="${f}" type="button">${label}</button>`).join('')}
         </div>
       </div>
       <pre class="console" id="rt-preview" style="margin-top:10px;max-height:340px">…</pre>
       <div class="actions">
         <button class="btn sm-btn ghost" data-act="rt-copy" type="button">${icon('copy', 'ic ic-sm')}${t('کپی', 'COPY')}</button>
         <span class="hint" style="margin:0">${t(
-          `Xray ${r.counts.xrayRules} قاعده · sing-box ${r.counts.singboxRuleSets} مجموعه · Clash ${r.counts.clashRules} قاعده`,
-          `Xray ${r.counts.xrayRules} rules · sing-box ${r.counts.singboxRuleSets} sets · Clash ${r.counts.clashRules} rules`,
+          `سرور: ${r.counts.serverRules} قاعده · کلاینت (اختیاری): Xray ${r.counts.xrayRules} · sing-box ${r.counts.singboxRuleSets} · Clash ${r.counts.clashRules}`,
+          `server: ${r.counts.serverRules} rules · client (optional): Xray ${r.counts.xrayRules} · sing-box ${r.counts.singboxRuleSets} · Clash ${r.counts.clashRules}`,
         )}</span>
       </div>
       ${freeStrip()}

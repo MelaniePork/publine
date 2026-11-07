@@ -4,6 +4,7 @@
  * The panel never writes a static config: every change in the UI rebuilds this
  * document and hot-swaps the running core.
  */
+import { routingSettings, serverXrayRules, rulesAssets } from '../routing.js';
 import { effectiveEnabled } from '../store.js';
 import { ssServerKey, legacySsPassword } from './shared.js';
 import { describeInbound, edgePath, edgeServiceName } from '../catalog.js';
@@ -179,6 +180,8 @@ export function buildXrayConfig({ doc, reality, certs, sharedSsPassword, serverS
     });
   }
 
+  const routingRules = serverXrayRules(routingSettings(doc), rulesAssets());
+
   const config = {
     log: { loglevel: logLevel, access: 'none', error: '' },
     api: {
@@ -220,7 +223,8 @@ export function buildXrayConfig({ doc, reality, certs, sharedSsPassword, serverS
       { tag: 'block', protocol: 'blackhole', settings: {} },
     ],
     routing: {
-      domainStrategy: 'AsIs',
+      // Iranian block rules are enforced here, on the server (src/routing.js).
+      domainStrategy: routingRules.length ? 'IPIfNonMatch' : 'AsIs',
       rules: [
         // the api inbound must be routed first: its destination is 127.0.0.1
         { type: 'field', inboundTag: ['api-in'], outboundTag: 'api' },
@@ -232,6 +236,7 @@ export function buildXrayConfig({ doc, reality, certs, sharedSsPassword, serverS
           ip: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '127.0.0.0/8', '169.254.0.0/16', '::1/128', 'fc00::/7', 'fe80::/10'],
           outboundTag: 'block',
         },
+        ...routingRules,
       ],
     },
   };

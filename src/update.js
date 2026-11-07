@@ -1,16 +1,18 @@
 /**
- * In-panel updater.
+ * In-panel updater — staged on the volume, applied at boot.
  *
- * The panel ships as plain files (no bundler), so updating is: ask GitHub for the
- * newest release of the project repository, download its source tarball, unpack it
- * next to the data volume and copy the code over the current install. The state
- * lives in DATA_DIR and is never touched.
+ * Railway recreates the container from the built image on every restart, so a
+ * file written into /app at runtime would disappear the moment the process
+ * restarts. The updater therefore downloads the release ONTO THE VOLUME
+ * (DATA_DIR/.update), writes a pending manifest, and lets `src/boot.js` copy
+ * the staged files over the install during the next boot — which is the only
+ * moment where that copy is both safe and persistent.
  *
  * Everything here is read-only unless `applyUpdate()` is called explicitly.
  */
 import https from 'node:https';
 import { execFile } from 'node:child_process';
-import { createWriteStream, existsSync, rmSync, mkdirSync, cpSync, readdirSync, readFileSync } from 'node:fs';
+import { createWriteStream, existsSync, rmSync, mkdirSync, cpSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { promisify } from 'node:util';
 import path from 'node:path';
 import { DATA_DIR, ROOT, APP } from './env.js';
@@ -158,17 +160,52 @@ function download(url, file) {
  * Download and unpack the newest release over the code paths.
  * Returns a small report; the caller decides when to restart the process.
  */
-export async function applyUpdate({ restart = true, onLog = () => {} } = {}) {
-  const info = await checkUpdate({ force: true });
-  if (!info.ok) throw new Error(info.error || 'update check failed');
+export function stageDir() {
+  return path.join(DATA_DIR, '.update');
+}
 
-  const stage = path.join(DATA_DIR, '.update');
+/** The manifest of a staged update, or null. */
+export function pendingUpdate() {
+  try {
+    return JSON.parse(readFileSync(path.join(stageDir(), 'pending.json'), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Copy a staged update over the install. Called from src/boot.js before the
+ * panel is imported, never from a request handler.
+ */
+export function applyStaged({ root = ROOT, log = () => {} } = {}) {
+  const pending = pendingUpdate();
+  if (!pending) return null;
+  const source = path.join(stageDir(), pending.dir || '');
+  if (!existsSync(path.join(source, 'src', 'index.js'))) {
+    log('staged update is incomplete — ignored');
+    rmSync(stageDir(), { recursive: true, force: true });
+    return null;
+  }
+  for (const rel of CODE_PATHS) {
+    const from = path.join(source, rel);
+    if (!existsSync(from)) continue;
+    cpSync(from, path.join(root, rel), { recursive: true, force: true });
+  }
+  rmSync(stageDir(), { recursive: true, force: true });
+  return { version: pending.version || '', from: pending.from || '', at: pending.at || 0 };
+}
+
+export async function applyUpdate({ onLog = () => {} } = {}) {
+  const info = await checkUpdate({ force: true });
+  const tarball = info.ok ? info.tarball : TARBALL_FALLBACK;
+
+  const stage = stageDir();
   rmSync(stage, { recursive: true, force: true });
   mkdirSync(stage, { recursive: true });
 
   const tar = path.join(stage, 'release.tar.gz');
-  onLog(`downloading ${info.tarball}`);
-  await download(info.tarball, tar);
+  onLog(`downloading ${tarball}`);
+  await download(tarball, tar);
 
   onLog('extracting');
   await run('tar', ['-xzf', tar, '-C', stage], { timeout: 60000 });
@@ -181,29 +218,24 @@ export async function applyUpdate({ restart = true, onLog = () => {} } = {}) {
   });
   if (!root) throw new Error('release archive has no package.json');
   const source = path.join(stage, root);
+  if (!existsSync(path.join(source, 'src', 'index.js'))) {
+    rmSync(stage, { recursive: true, force: true });
+    throw new Error('release archive is not a NightLine build');
+  }
 
   let version = APP.version;
   try {
-    version = JSON.parse(readFileSync(path.join(source, 'package.json'), 'utf8')).version || version;
+    version = JSON.parse(readFileSync(path.join(source, 'package.json'), 'utf8').replace(/^\uFEFF/, '')).version || version;
   } catch { /* keep current */ }
 
-  const copied = [];
-  for (const rel of CODE_PATHS) {
-    const from = path.join(source, rel);
-    if (!existsSync(from)) continue;
-    const to = path.join(ROOT, rel);
-    onLog(`installing ${rel}`);
-    cpSync(from, to, { recursive: true, force: true });
-    copied.push(rel);
-  }
+  const paths = CODE_PATHS.filter((rel) => existsSync(path.join(source, rel)));
+  onLog(`staged ${paths.length} paths (v${version}) on the volume`);
+  rmSync(tar, { force: true });
+  writeFileSync(
+    path.join(stage, 'pending.json'),
+    JSON.stringify({ version, from: APP.version, dir: root, paths, at: Date.now() }, null, 2),
+  );
 
-  rmSync(stage, { recursive: true, force: true });
-  return {
-    ok: true,
-    version,
-    from: info.current,
-    paths: copied,
-    restarts: Boolean(restart),
-    at: Date.now(),
-  };
+  // the running version stays as it is until the next boot applies the stage
+  return { ok: true, version, from: APP.version, paths, staged: true, at: Date.now() };
 }

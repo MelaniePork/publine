@@ -182,7 +182,9 @@ export function xrayJson(doc, user) {
   }
   outbounds.push({ tag: 'direct', protocol: 'freedom', settings: {} });
   outbounds.push({ tag: 'block', protocol: 'blackhole', settings: {} });
-  const route = routingSettings(doc);
+  const stored = routingSettings(doc);
+  // Client-side rules are opt-in: the server enforces them on Railway.
+  const route = { ...stored, enabled: stored.enabled && stored.clientRules };
   return {
     remarks: `NIGHTLINE · Railway · ${user.name}`,
     log: { loglevel: 'warning' },
@@ -295,7 +297,9 @@ export function singboxJson(doc, user) {
     .map((l) => singboxOutbound(l, user, doc.settings || {}))
     .filter(Boolean);
   const tags = outbounds.map((o) => o.tag);
-  const route = routingSettings(doc);
+  const stored = routingSettings(doc);
+  // Client-side rules are opt-in: the server enforces them on Railway.
+  const route = { ...stored, enabled: stored.enabled && stored.clientRules };
   const sbsDns = singboxDns(route);
   const ruleSets = singboxRuleSets(route);
   return {
@@ -402,7 +406,9 @@ export function clashYaml(doc, user) {
   if (!names.length) lines.push('      - DIRECT');
   lines.push('      - DIRECT');
   lines.push('');
-  const route = routingSettings(doc);
+  const stored = routingSettings(doc);
+  // Client-side rules are opt-in: the server enforces them on Railway.
+  const route = { ...stored, enabled: stored.enabled && stored.clientRules };
   const providers = clashProviders(route);
   if (Object.keys(providers).length) {
     lines.push('rule-providers:');

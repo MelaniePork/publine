@@ -26,7 +26,8 @@ ARG GH_MIRROR=
 # DATA_DIR — see README → «دو متغیر اجباری».
 ENV NODE_ENV=production \
     NL_BIN_DIR=/app/bin \
-    NL_TCP_PORT=8443
+    NL_TCP_PORT=8443 \
+    XRAY_LOCATION_ASSET=/app/bin
 
 # openssl is only needed once: to mint the self-signed certificate that
 # AnyTLS / Trojan-TLS / ShadowTLS / Hysteria2 inbounds use.
@@ -89,6 +90,37 @@ RUN set -eux; \
     fi; \
     rm -rf /tmp/mtg.tar.gz /tmp/mtg-*.tar.gz /tmp/mtg-${MTG_VERSION}-linux-${MTG_ARCH} /tmp/xray.zip
 
+
+# ── iranian routing data ────────────────────────────────────────────────────
+# geosite.dat / geoip.dat come from the Iran v2ray rules project (a superset of
+# the stock lists: ir, ads, malware, phishing, cryptominers) and the sing-box
+# rule-sets are stored next to them, so the SERVER enforces the block rules with
+# no network access at runtime. Xray looks for its .dat files beside its binary.
+# If every download fails the marker says so and the panel falls back to the
+# names the stock lists know — the cores never fail to start.
+RUN set -eux; \
+    mkdir -p /app/bin/srs; ok=1; \
+    fetch() { url="$1"; out="$2"; \
+      for attempt in 1 2 3 4 5; do \
+        if curl -fSL --retry 2 --retry-delay 2 --retry-all-errors \
+                 --connect-timeout 20 --max-time 300 \
+                 -o "$out.part" "$url"; then mv "$out.part" "$out"; return 0; fi; \
+        echo "retry ${attempt} for ${url}"; sleep $((attempt * 3)); \
+      done; rm -f "$out.part"; return 1; }; \
+    for f in geosite.dat geoip.dat; do \
+      fetch "https://raw.githubusercontent.com/Chocolate4U/Iran-v2ray-rules/release/$f" "/app/bin/$f" || ok=0; \
+    done; \
+    for f in geosite-category-ir geoip-ir geosite-category-ads-all geosite-malware geosite-phishing geoip-malware; do \
+      fetch "https://raw.githubusercontent.com/Chocolate4U/Iran-sing-box-rules/rule-set/$f.srs" "/app/bin/srs/$f.srs" || ok=0; \
+    done; \
+    if [ "$ok" = "1" ]; then \
+      printf '{"iran":true}\n' > /app/bin/.iran-rules.json; echo "iranian routing data: ok"; \
+    else \
+      printf '{"iran":false}\n' > /app/bin/.iran-rules.json; \
+      echo "!! iranian routing data incomplete — falling back to the stock lists"; \
+    fi; \
+    ls -lh /app/bin /app/bin/srs
+
 # ── app ─────────────────────────────────────────────────────────────────────
 WORKDIR /app
 COPY package.json package-lock.json* ./
@@ -106,4 +138,4 @@ EXPOSE 8443
 HEALTHCHECK --interval=45s --timeout=8s --start-period=40s --retries=4 \
   CMD node -e "const ps=[process.env.NL_PANEL_PORT,process.env.PORT,8080,3000].filter(Boolean).map(Number);(async()=>{for(const p of ps){try{const r=await fetch('http://127.0.0.1:'+p+'/health');if(r.ok)process.exit(0)}catch{}}process.exit(1)})()"
 
-CMD ["node", "src/index.js"]
+CMD ["node", "src/boot.js"]
