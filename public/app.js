@@ -2056,6 +2056,7 @@ const RT_TOGGLES = [
   { key: 'enabled', fa: 'قوانین فعال باشند', en: 'RULES ENABLED', hintFa: 'کلید اصلی؛ با خاموش‌کردن آن هیچ قاعده‌ای روی هسته‌ها نوشته نمی‌شود.', hintEn: 'Master switch: no rules are written to the cores when off.' },
   { key: 'blockAds', fa: 'مسدودسازی تبلیغات', en: 'BLOCK ADS', hintFa: 'لیست تبلیغات فارسی و خارجی، روی خود سرور بسته می‌شود.', hintEn: 'Persian and foreign ad lists, blocked on the server itself.' },
   { key: 'blockSecurity', fa: 'مسدودسازی بدافزار و فیشینگ', en: 'BLOCK MALWARE & PHISHING', hintFa: 'دامنه و آی‌پی‌های آلوده و ماینرها.', hintEn: 'Malware, phishing, miner domains and addresses.' },
+  { key: 'blockYoutube', icon: 'youtube', fa: 'مسدودسازی تبلیغات یوتیوب', en: 'BLOCK YOUTUBE ADS', hintFa: 'کانال‌های تبلیغ یوتیوب روی سرور بسته می‌شوند: میزبان‌های تبلیغ و کانال QUIC/UDP 443 که استریم تبلیغ از آن می‌آید. پخش خود ویدیو دست‌نخورده می‌ماند و کاربر هیچ تنظیمی روی گوشی ندارد.', hintEn: 'YouTube ad channels are dropped on the server: the ad hosts and the QUIC/UDP 443 channel that carries the stitched ad stream. Video playback itself is untouched and the user configures nothing.' },
   { key: 'blockQuic', fa: 'بستن QUIC (UDP 443)', en: 'BLOCK QUIC (UDP 443)', hintFa: 'همان چیزی که DPI ایران بیشتر از همه محدود می‌کند.', hintEn: 'The protocol Iranian DPI throttles hardest.' },
   { key: 'blockBittorrent', fa: 'بستن تورنت', en: 'BLOCK TORRENT', hintFa: 'سرور به‌عنوان خروجی تورنت استفاده نمی‌شود.', hintEn: 'Keeps the service from being used as a torrent exit.' },
 ];
@@ -2110,7 +2111,7 @@ function renderRouting() {
           ${RT_TOGGLES.map((row) => `
             <label class="chk" title="${esc(tt(row.hintFa, row.hintEn))}">
               <input type="checkbox" id="s-rt-${row.key}" ${s[row.key] ? 'checked' : ''}>
-              ${t(row.fa, row.en)}
+              <span class="rt-row-label">${row.icon ? `<svg class="ic ic-sm rt-row-ic"><use href="#i-${row.icon}"/></svg>` : ''}${t(row.fa, row.en)}</span>
             </label>`).join('')}
         </div>
         <div class="actions">

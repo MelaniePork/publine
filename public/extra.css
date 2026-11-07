@@ -665,3 +665,11 @@ footer.colophon-wrap,footer{margin-top:26px}
 .hosts-alert-head svg{flex:0 0 auto}
 .hosts-alert .field-grid{margin-bottom:10px}
 @media (max-width:640px){ .hosts-alert .field-grid{grid-template-columns:minmax(0,1fr)} }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   1.0.5 · youtube icon inside the routing toggles
+   The new "block YouTube ads" row carries a small play-button glyph next to
+   its label, so the switch is recognisable at a glance without reading it.
+   ---------------------------------------------------------------------- */
+.chk .rt-row-label{display:inline-flex;align-items:center;gap:6px;min-width:0}
+.chk .rt-row-ic{width:14px;height:14px;flex:none;opacity:.9}
