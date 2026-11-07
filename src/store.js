@@ -11,6 +11,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { DATA_FILE, DATA_DIR, ensureDirs } from './env.js';
 import { DEFAULT_INBOUNDS } from './catalog.js';
+import { ROUTING_DEFAULTS } from './routing.js';
 
 const SCHEMA = 3;
 const listeners = new Set();
@@ -56,6 +57,8 @@ function defaults() {
       // Client-side TLS-hello fragment. Splitting the ClientHello into two packets
       // is the single most effective Iranian-DPI workaround and costs ~10 ms.
       fragment: true,
+      // Iranian split-routing rules, on by default (src/routing.js).
+      routing: { ...ROUTING_DEFAULTS },
       telegram: {
         mtproto: {
           enabled: false,
@@ -100,6 +103,7 @@ function migrate(raw) {
       web: { ...base.settings.telegram.web, ...(((raw.settings || {}).telegram || {}).web || {}) },
     },
     cores: { ...base.settings.cores, ...((raw.settings || {}).cores || {}) },
+    routing: { ...base.settings.routing, ...(((raw.settings || {}).routing) || {}) },
   };
   out.users = Array.isArray(raw.users) ? raw.users.map(normalizeUser) : [];
   out.inbounds = Array.isArray(raw.inbounds) && raw.inbounds.length ? raw.inbounds : DEFAULT_INBOUNDS();

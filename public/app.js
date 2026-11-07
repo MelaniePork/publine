@@ -15,6 +15,9 @@ const S = {
   update: null,      // last /api/update answer
   updateBusy: false,
   updateTimer: null,
+  routing: null,
+  rtPreview: null,
+  rtFormat: 'xray',
   busy: false,
 };
 
@@ -193,11 +196,12 @@ function renderStatusBar() {
 
 const TABS = [
   { id: 'dashboard', icon: 'gauge', fa: 'نمای کلی', en: 'OVERVIEW' },
-  { id: 'easy', icon: 'bolt', fa: 'تنظیم آسان', en: 'EASY SETUP' },
+  { id: 'easy', icon: 'bolt', fa: 'آسان', en: 'EASY' },
   { id: 'railynx', icon: 'radar', fa: 'Railynx', en: 'RAILYNX' },
-  { id: 'inbounds', icon: 'layers', fa: 'روش‌های اتصال', en: 'METHODS' },
+  { id: 'inbounds', icon: 'layers', fa: 'روش‌ها', en: 'METHODS' },
   { id: 'users', icon: 'users', fa: 'کاربران', en: 'USERS' },
-  { id: 'delivery', icon: 'send', fa: 'لینک و اشتراک', en: 'LINKS & SUBS' },
+  { id: 'delivery', icon: 'send', fa: 'لینک‌ها', en: 'LINKS' },
+  { id: 'routing', icon: 'compass', fa: 'مسیریابی', en: 'ROUTING' },
   { id: 'telegram', icon: 'telegram', fa: 'تلگرام', en: 'TELEGRAM' },
   { id: 'cores', icon: 'cpu', fa: 'هسته‌ها', en: 'CORES' },
   { id: 'settings', icon: 'sliders', fa: 'تنظیمات', en: 'SETTINGS' },
@@ -1833,6 +1837,43 @@ async function onAction(act, arg, el) {
         method: 'POST',
         body: { fragment: $('#s-fragment')?.checked ?? true },
       }));
+    case 'save-routing': {
+      const next = { dns: $('#s-rt-dns').value, enabled: $('#s-rt-enabled').checked };
+      for (const row of RT_TOGGLES) {
+        if (row.key === 'enabled') continue;
+        next[row.key] = $(`#s-rt-${row.key}`).checked;
+      }
+      return withState(async () => {
+        const res = await api('/api/settings', { method: 'POST', body: { routing: next } });
+        S.routing = null;
+        S.rtPreview = null;
+        await loadRouting(true);
+        api('/api/routing/preview').then((p) => { S.rtPreview = p; paintRoutingPreview(); }).catch(() => {});
+        toast(t('قوانین مسیریابی ذخیره و اعمال شد.', 'Routing rules saved and applied.'));
+        return res;
+      });
+    }
+    case 'routing-reset': {
+      const d = (S.routing && S.routing.defaults) || {};
+      for (const row of RT_TOGGLES) {
+        const el = $(`#s-rt-${row.key}`);
+        if (el) el.checked = Boolean(d[row.key]);
+      }
+      if (d.dns && $('#s-rt-dns')) $('#s-rt-dns').value = d.dns;
+      toast(t('مقادیر پیش‌فرض برگشت؛ برای ذخیره دکمه را بزن.', 'Defaults restored — press save to keep them.'));
+      return;
+    }
+    case 'rt-preview': {
+      S.rtFormat = arg;
+      if (S.rtPreview) return paintRoutingPreview();
+      const p = await api('/api/routing/preview');
+      S.rtPreview = p;
+      return paintRoutingPreview();
+    }
+    case 'rt-copy': {
+      const pre = $('#rt-preview');
+      return copyText(pre ? pre.textContent : '');
+    }
     case 'save-cores':
       return withState(() => api('/api/settings', {
         method: 'POST',
@@ -1869,6 +1910,14 @@ async function onAction(act, arg, el) {
       return undefined;
   }
 }
+
+document.addEventListener('change', (ev) => {
+  if (ev.target && ev.target.id === 's-rt-dns' && S.routing) {
+    const hit = (S.routing.dnsPresets || []).find((d) => d.key === ev.target.value);
+    const note = $('#rt-dns-note');
+    if (hit && note) note.innerHTML = t(hit.note, hit.noteEn);
+  }
+});
 
 document.addEventListener('click', (ev) => {
   const el = ev.target.closest('[data-act]');
@@ -1935,6 +1984,124 @@ async function submitAuth(ev) {
   }
 }
 
+
+/* ── iran routing (split rules) ──────────────────────────────────────── */
+
+const RT_TOGGLES = [
+  { key: 'enabled', fa: 'قوانین فعال باشند', en: 'RULES ENABLED', hintFa: 'کلید اصلی؛ با خاموش‌کردن آن همه‌چیز از تونل می‌گذرد.', hintEn: 'Master switch — everything goes through the tunnel when off.' },
+  { key: 'iranDat', fa: 'فایل‌های قوانین ایران نصب است', en: 'IRAN RULE FILES INSTALLED', hintFa: 'اگر geosite.dat و geoip.dat مخزن ایران را کنار برنامه گذاشته‌ای. با خاموش بودنش فقط نام‌هایی نوشته می‌شود که فایل پیش‌فرض Xray هم می‌شناسد تا کانفیگ بی‌خطا بالا بیاید.', hintEn: 'Turn off if you use the stock Xray data files — only names both data sets know are written.' },
+  { key: 'iranDirect', fa: 'دامنه و آی‌پی ایران مستقیم', en: 'IRAN DIRECT', hintFa: 'سایت‌های ایرانی بدون تونل باز می‌شوند (سریع‌تر و بی‌مصرف).', hintEn: 'Iranian sites bypass the tunnel.' },
+  { key: 'blockAds', fa: 'مسدودسازی تبلیغات', en: 'BLOCK ADS', hintFa: 'لیست تبلیغات فارسی و خارجی.', hintEn: 'Persian and foreign ad lists.' },
+  { key: 'blockSecurity', fa: 'مسدودسازی بدافزار و فیشینگ', en: 'BLOCK MALWARE', hintFa: 'دامنه و آی‌پی‌های آلوده.', hintEn: 'Malware, phishing and miner lists.' },
+  { key: 'blockQuic', fa: 'بستن QUIC (UDP 443)', en: 'BLOCK QUIC', hintFa: 'همان چیزی که DPI ایران بیشتر از همه محدود می‌کند.', hintEn: 'The protocol Iranian DPI throttles hardest.' },
+  { key: 'directPrivate', fa: 'شبکهٔ محلی مستقیم', en: 'LAN DIRECT', hintFa: 'آدرس‌های خصوصی هیچ‌وقت از تونل نمی‌روند.', hintEn: 'Private ranges never enter the tunnel.' },
+];
+
+async function loadRouting(force = false) {
+  if (!force && S.routing) return S.routing;
+  S.routing = await api('/api/routing');
+  return S.routing;
+}
+
+function paintRoutingPreview() {
+  const pre = $('#rt-preview');
+  if (!pre) return;
+  const fmt = S.rtFormat || 'xray';
+  pre.textContent = (S.rtPreview && S.rtPreview[fmt]) || t('در حال ساخت پیش‌نمایش…', 'building preview…');
+  $$('#rt-format .pill').forEach((b) => b.classList.toggle('active', b.dataset.arg === fmt));
+}
+
+function renderRouting() {
+  const pane = $('#pane-routing');
+  if (!S.routing) {
+    pane.innerHTML = `<div class="card"><p class="hint" style="margin:0">${t('در حال خواندن قوانین…', 'loading rules…')}</p></div>`;
+    loadRouting(true)
+      .then(() => { if (S.tab === 'routing') renderRouting(); })
+      .catch((err) => toast(err.message, 'warn'));
+    return;
+  }
+  const r = S.routing;
+  const s = r.settings;
+
+  pane.innerHTML = `
+    <div class="cols">
+      <div class="card">
+        <p class="kicker">${icon('compass')}${t('قوانین مسیریابی ایران', 'IRAN ROUTING RULES')}</p>
+        <p class="labor">${t(
+          'ترافیک ایرانی مستقیم و بدون تونل می‌رود، تبلیغات و بدافزار بسته می‌شود و بقیهٔ دنیا از تونل عبور می‌کند. این قوانین به‌صورت پیش‌فرض روشن‌اند و در همهٔ فایل‌های اشتراک (Xray، sing-box و Clash) نوشته می‌شوند.',
+          'Iranian traffic goes out directly, ads and malware are blocked, everything else is tunnelled. The rules are on by default and are baked into every subscription file (Xray, sing-box and Clash).',
+        )}</p>
+        <a class="repo-chip" href="${esc(r.source.xray)}" target="_blank" rel="noopener">
+          <svg class="ic ic-sm ic-brand"><use href="#i-github"/></svg>${esc(r.source.author)}/${esc(r.source.name.replaceAll(' ', '-'))}
+        </a>
+        <div class="dashed"></div>
+        <div class="stack-sm">
+          ${RT_TOGGLES.map((row) => `
+            <label class="chk" title="${esc(tt(row.hintFa, row.hintEn))}">
+              <input type="checkbox" id="s-rt-${row.key}" ${s[row.key] ? 'checked' : ''}>
+              ${t(row.fa, row.en)}
+            </label>`).join('')}
+        </div>
+        <div class="field-grid" style="margin-top:12px">
+          <div>
+            <label class="fld-label">${t('DNS', 'DNS')}</label>
+            <select id="s-rt-dns">
+              ${(r.dnsPresets || []).map((d) => `<option value="${esc(d.key)}" ${s.dns === d.key ? 'selected' : ''}>${esc(tt(d.label, d.labelEn))}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <p class="hint" id="rt-dns-note">${t(r.dns.note, r.dns.noteEn)}</p>
+        <div class="actions">
+          <button class="btn sm-btn primary" data-act="save-routing" type="button">${icon('save', 'ic ic-sm')}${t('ذخیره و اعمال', 'SAVE & APPLY')}</button>
+          <button class="btn sm-btn ghost" data-act="routing-reset" type="button">${icon('refresh', 'ic ic-sm')}${t('بازگشت به پیش‌فرض', 'RESET TO DEFAULT')}</button>
+        </div>
+      </div>
+
+      <div class="card card-subtle">
+        <p class="kicker">${icon('download')}${t('فایل‌های قوانین (Xray / v2ray)', 'RULE FILES (XRAY / V2RAY)')}</p>
+        <p class="hint" style="margin-top:0">${t(
+          'برنامه‌های Xray و v2rayNG برای خواندن این قوانین به فایل‌های .dat نیاز دارند. فایل‌ها را بگیر و کنار برنامه در پوشهٔ assets بگذار؛ sing-box و Clash خودشان از اینترنت می‌خوانند و کاری لازم نیست.',
+          'Xray and v2rayNG need the .dat files next to the app (assets folder). sing-box and Clash fetch everything from the internet — nothing to install.',
+        )}</p>
+        <div class="stack-sm">
+          ${(r.geoFiles || []).map((f) => `
+            <div class="rt-file">
+              <span class="mono">${esc(f.name)}</span>
+              <span class="rt-file-label">${t(f.label, f.labelEn)}</span>
+              <a class="mini" href="${esc(f.url)}" target="_blank" rel="noopener">${icon('download', 'ic ic-sm')}GitHub</a>
+              <a class="mini ghost" href="${esc(f.cdn)}" target="_blank" rel="noopener">${icon('cloud-up', 'ic ic-sm')}CDN</a>
+            </div>`).join('')}
+        </div>
+        <p class="hint">${t('اگر GitHub باز نشد، از ستون CDN بگیر.', 'Use the CDN column when GitHub is unreachable.')}</p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="spread">
+        <p class="kicker" style="margin:0">${icon('file')}${t('پیش‌نمایش قوانین تولیدشده', 'GENERATED RULES PREVIEW')}</p>
+        <div class="pill-group" id="rt-format">
+          ${['xray', 'singbox', 'clash'].map((f) => `<button class="pill ${S.rtFormat === f ? 'active' : ''}" data-act="rt-preview" data-arg="${f}" type="button">${f}</button>`).join('')}
+        </div>
+      </div>
+      <pre class="console" id="rt-preview" style="margin-top:10px;max-height:340px">…</pre>
+      <div class="actions">
+        <button class="btn sm-btn ghost" data-act="rt-copy" type="button">${icon('copy', 'ic ic-sm')}${t('کپی', 'COPY')}</button>
+        <span class="hint" style="margin:0">${t(
+          `Xray ${r.counts.xrayRules} قاعده · sing-box ${r.counts.singboxRuleSets} مجموعه · Clash ${r.counts.clashRules} قاعده`,
+          `Xray ${r.counts.xrayRules} rules · sing-box ${r.counts.singboxRuleSets} sets · Clash ${r.counts.clashRules} rules`,
+        )}</span>
+      </div>
+      ${freeStrip()}
+    </div>`;
+
+  paintRoutingPreview();
+  if (!S.rtPreview) {
+    api('/api/routing/preview')
+      .then((p) => { S.rtPreview = p; paintRoutingPreview(); })
+      .catch(() => {});
+  }
+}
+
 /* ── boot & refresh ──────────────────────────────────────────────────── */
 
 const PANE_RENDERERS = {
@@ -1944,6 +2111,7 @@ const PANE_RENDERERS = {
   inbounds: () => renderInbounds(),
   users: () => renderUsers(),
   delivery: () => renderDelivery(),
+  routing: () => renderRouting(),
   telegram: () => renderTelegram(),
   cores: () => renderCores(),
   settings: () => renderSettings(),

@@ -1,6 +1,6 @@
 {
   "name": "nightline-railway",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "type": "module",
   "description": "NIGHTLINE · Railway Edition — multi-core (Xray / sing-box) panel with native Telegram proxy suite for Railway free plan",

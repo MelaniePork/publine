@@ -30,6 +30,7 @@ import {
 import { PRESETS, describeInbound, presetById, FIELD_MAP } from '../catalog.js';
 import { buildUserLinks } from '../links.js';
 import { buildSub, headerSet, plainText } from '../subs.js';
+import { routingSummary, previewRouting, ROUTING_DEFAULTS, DNS_PRESETS } from '../routing.js';
 import {
   hashPassword,
   verifyPassword,
@@ -375,6 +376,14 @@ export async function handleApi(ctx) {
     return send(res, 200, buildState(runtime, req));
   }
 
+  if (route === 'GET /api/routing') {
+    return send(res, 200, { ok: true, ...routingSummary(doc), previews: null });
+  }
+
+  if (route === 'GET /api/routing/preview') {
+    return send(res, 200, { ok: true, ...previewRouting(doc) });
+  }
+
   if (route === 'POST /api/settings') {
     const body = await readBody(req);
     const allowed = [
@@ -384,6 +393,16 @@ export async function handleApi(ctx) {
     setDoc((d) => {
       for (const key of allowed) {
         if (body[key] !== undefined) d.settings[key] = body[key];
+      }
+      if (body.routing && typeof body.routing === 'object') {
+        const next = { ...d.settings.routing };
+        for (const key of Object.keys(ROUTING_DEFAULTS)) {
+          if (body.routing[key] === undefined) continue;
+          next[key] = key === 'dns'
+            ? (DNS_PRESETS[body.routing.dns] ? body.routing.dns : next.dns)
+            : Boolean(body.routing[key]);
+        }
+        d.settings.routing = next;
       }
       if (body.cores && typeof body.cores === 'object') {
         if (body.cores.xray) d.settings.cores.xray = { ...d.settings.cores.xray, ...body.cores.xray };

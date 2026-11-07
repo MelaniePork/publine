@@ -2,9 +2,22 @@
  * NIGHTLINE · Railway Edition — entry point.
  */
 import { ensureDirs, PORT, PANEL_PORTS, PORT_CONFLICT, MUX_PORT, DATA_DIR, BIN, APP, IS_RAILWAY, RAILWAY } from './env.js';
+import { auditEnvironment, requirementBanner } from './guard.js';
 import { load, get } from './store.js';
 import { Runtime } from './runtime.js';
 import { createPanelServer } from './http/server.js';
+
+/* ── boot guard: variables + volume are mandatory ─────────────────────── */
+const guard = auditEnvironment({ dataDir: process.env.DATA_DIR || process.env.NL_DATA_DIR || '', volumeMount: RAILWAY.volumePath });
+if (guard.warn.length) {
+  for (const item of guard.warn) {
+    console.warn(`[guard] ${item.en} — ${item.fix}`);
+  }
+}
+if (!guard.ok) {
+  console.error(requirementBanner(guard));
+  process.exit(1);
+}
 
 ensureDirs();
 load();
@@ -25,7 +38,8 @@ function banner() {
     `  version ${APP.version} · ${new Date().toISOString()}`,
     `  panel port        : ${boundPanelPorts.join(', ') || PORT}`,
     `  tcp mux port      : ${MUX_PORT}`,
-    `  data directory    : ${DATA_DIR}`,
+    `  data directory    : ${DATA_DIR}${guard.info.volumeAttached ? ' (volume attached)' : ''}`,
+    `  volume path       : ${RAILWAY.volumePath || DATA_DIR}`,
     `  public host       : ${facts.publicHost || '(not detected yet)'}`,
     `  tcp proxy         : ${facts.tcpHost ? `${facts.tcpHost}:${facts.tcpPort}` : '(not enabled)'}`,
     `  railway           : ${IS_RAILWAY ? `${RAILWAY.projectName || '-'} / ${RAILWAY.serviceName || '-'}` : 'local run'}`,

@@ -20,11 +20,13 @@ ARG TARGETARCH=amd64
 #   https://gh-proxy.com/https://github.com/XTLS/Xray-core/releases/download/...
 ARG GH_MIRROR=
 
+# NOTE: PORT and DATA_DIR are deliberately NOT set here. They are mandatory
+# Railway service variables (PORT=8080, DATA_DIR=/data) and the boot guard in
+# src/guard.js refuses to start without them and without a volume mounted on
+# DATA_DIR — see README → «دو متغیر اجباری».
 ENV NODE_ENV=production \
-    DATA_DIR=/data \
     NL_BIN_DIR=/app/bin \
-    NL_TCP_PORT=8443 \
-    PORT=8080
+    NL_TCP_PORT=8443
 
 # openssl is only needed once: to mint the self-signed certificate that
 # AnyTLS / Trojan-TLS / ShadowTLS / Hysteria2 inbounds use.

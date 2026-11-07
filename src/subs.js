@@ -5,6 +5,16 @@
  */
 import { buildUserLinks } from './links.js';
 import { certPin } from './config/certs.js';
+import {
+  routingSettings,
+  xrayDns,
+  xrayRules,
+  singboxDns,
+  singboxRuleSets,
+  singboxRules,
+  clashProviders,
+  clashRules,
+} from './routing.js';
 import { userTotal } from './store.js';
 
 export const REPO_URL = 'https://github.com/youdidking/NightLine-Railway';
@@ -172,29 +182,24 @@ export function xrayJson(doc, user) {
   }
   outbounds.push({ tag: 'direct', protocol: 'freedom', settings: {} });
   outbounds.push({ tag: 'block', protocol: 'blackhole', settings: {} });
+  const route = routingSettings(doc);
   return {
     remarks: `NIGHTLINE · Railway · ${user.name}`,
     log: { loglevel: 'warning' },
-    dns: {
-      // DoH first: plain UDP:53 is hijacked by most Iranian ISPs
-      servers: ['https+local://1.1.1.1/dns-query', 'https+local://8.8.8.8/dns-query', 'localhost'],
-      queryStrategy: 'UseIPv4',
-    },
+    // Split DNS: Iranian domains can be answered by a local resolver, the rest
+    // goes over DoH (plain UDP:53 is hijacked by most Iranian ISPs).
+    dns: xrayDns(route),
     inbounds: [
       { tag: 'socks', port: 10808, listen: '127.0.0.1', protocol: 'socks', settings: { udp: true } },
       { tag: 'http', port: 10809, listen: '127.0.0.1', protocol: 'http', settings: {} },
     ],
     outbounds,
     routing: {
-      domainStrategy: 'AsIs',
+      // IPIfNonMatch: the geoip rules below only run when the domain rules missed.
+      domainStrategy: route.enabled ? 'IPIfNonMatch' : 'AsIs',
       rules: [
-        // literal private ranges — a `geoip:private` rule needs geoip.dat beside the
-        // binary and kills the whole client config when that file is absent
-        {
-          type: 'field',
-          ip: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '127.0.0.0/8', '169.254.0.0/16', '::1/128', 'fc00::/7', 'fe80::/10'],
-          outboundTag: 'direct',
-        },
+        // Iranian split routing (ads/security blocked, Iran direct) — see src/routing.js
+        ...xrayRules(route),
         { type: 'field', network: 'tcp,udp', outboundTag: outbounds[0]?.tag || 'direct' },
       ],
     },
@@ -290,32 +295,33 @@ export function singboxJson(doc, user) {
     .map((l) => singboxOutbound(l, user, doc.settings || {}))
     .filter(Boolean);
   const tags = outbounds.map((o) => o.tag);
+  const route = routingSettings(doc);
+  const sbsDns = singboxDns(route);
+  const ruleSets = singboxRuleSets(route);
   return {
     log: { level: 'warn', timestamp: true },
     dns: {
-      // sing-box 1.12+ DNS server format
-      servers: [
-        // No `detour`: sing-box 1.12+ refuses a detour into an empty direct
-        // outbound, and routing DNS through the tunnel would kill the client
-        // whenever the server is unreachable.
-        { type: 'https', tag: 'cloudflare', server: '1.1.1.1' },
-        { type: 'https', tag: 'google', server: '8.8.8.8' },
-        { type: 'local', tag: 'local' },
-      ],
-      rules: [{ domain_suffix: ['.ir'], server: 'local' }],
-      final: 'cloudflare',
+      // sing-box 1.12+ DNS server format. No `detour`: sing-box refuses a detour
+      // into an empty direct outbound, and tunnelling DNS would kill the client
+      // whenever the server is unreachable.
+      servers: sbsDns.servers,
+      rules: sbsDns.rules,
+      final: sbsDns.final,
     },
     inbounds: [
       { type: 'mixed', tag: 'mixed-in', listen: '127.0.0.1', listen_port: 2080 },
     ],
     outbounds: [...outbounds, { type: 'direct', tag: 'direct' }, { type: 'block', tag: 'block' }],
     route: {
+      ...(ruleSets.length ? { rule_set: ruleSets } : {}),
       rules: [
         { action: 'sniff' },
         { protocol: 'dns', action: 'hijack-dns' },
         { ip_is_private: true, action: 'reject' },
         { clash_mode: 'direct', outbound: 'direct' },
         { clash_mode: 'global', outbound: tags[0] || 'direct' },
+        // Iranian split routing — see src/routing.js
+        ...singboxRules(route),
       ],
       final: tags[0] || 'direct',
       auto_detect_interface: true,
@@ -396,8 +402,25 @@ export function clashYaml(doc, user) {
   if (!names.length) lines.push('      - DIRECT');
   lines.push('      - DIRECT');
   lines.push('');
+  const route = routingSettings(doc);
+  const providers = clashProviders(route);
+  if (Object.keys(providers).length) {
+    lines.push('rule-providers:');
+    for (const [key, p] of Object.entries(providers)) {
+      lines.push(
+        `  ${key}:`,
+        `    type: ${p.type}`,
+        `    behavior: ${p.behavior}`,
+        `    format: ${p.format}`,
+        `    url: "${p.url}"`,
+        `    path: ${p.path}`,
+        `    interval: ${p.interval}`,
+      );
+    }
+    lines.push('');
+  }
   lines.push('rules:');
-  lines.push('  - GEOIP,PRIVATE,DIRECT');
+  for (const rule of clashRules(route)) lines.push(`  - ${rule}`);
   lines.push('  - MATCH,NIGHTLINE');
   return lines.join('\n') + '\n';
 }
